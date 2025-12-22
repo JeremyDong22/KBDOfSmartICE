@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KBD 开闭店打卡</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text">加载中...</div>
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+
+    <!-- Logout Button -->
+    <button class="logout-btn" id="logoutBtn">退出登录</button>
+
+    <!-- Map Recenter Button -->
+    <button class="map-recenter-btn"
+            id="recenterBtn"
+            aria-label="Recenter map to initial view"
+            title="回到初始位置">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="8" />
+            <line x1="12" y1="2" x2="12" y2="6" />
+            <line x1="12" y1="18" x2="12" y2="22" />
+            <line x1="2" y1="12" x2="6" y2="12" />
+            <line x1="18" y1="12" x2="22" y2="12" />
+            <circle cx="12" cy="12" r="2" fill="#333" stroke="none" />
+        </svg>
+    </button>
+
+    <!-- DEV Time Control Panel -->
+    <div class="time-control-panel collapsed">
+        <button class="time-control-toggle" id="timeControlToggle" title="开发者时间控制">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/>
+                <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </button>
+        <div class="time-control-content">
+            <h4>开发者时钟</h4>
+            <div class="time-display" id="devTimeDisplay">00:00:00</div>
+            <div class="time-controls">
+                <div class="time-control-row">
+                    <span class="time-label">时</span>
+                    <button class="time-btn" data-unit="hour" data-delta="-1">-</button>
+                    <span class="time-value" id="devHour">00</span>
+                    <button class="time-btn" data-unit="hour" data-delta="1">+</button>
+                </div>
+                <div class="time-control-row">
+                    <span class="time-label">分</span>
+                    <button class="time-btn" data-unit="minute" data-delta="-1">-</button>
+                    <span class="time-value" id="devMinute">00</span>
+                    <button class="time-btn" data-unit="minute" data-delta="1">+</button>
+                </div>
+                <div class="time-control-row">
+                    <span class="time-label">秒</span>
+                    <button class="time-btn" data-unit="second" data-delta="-1">-</button>
+                    <span class="time-value" id="devSecond">00</span>
+                    <button class="time-btn" data-unit="second" data-delta="1">+</button>
+                </div>
+            </div>
+            <button class="time-reset-btn" id="resetDevTime">重置为当前时间</button>
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <span class="status-dot"></span>
+        <span id="slotTypeText">午市开店</span>
+    </div>
+
+    <!-- Floating Check-in Panel -->
+    <div class="checkin-panel" id="checkinPanel" style="display: none;">
+        <!-- Task Info -->
+        <h2 id="panelTitle">检查任务</h2>
+        <p class="panel-subtitle" id="panelSubtitle">加载中...</p>
+
+        <!-- Input Area (Dynamic based on media_type) -->
+        <div id="inputArea">
+            <!-- notification: No input needed, just confirm button -->
+            <div id="notificationInput" class="input-section" style="display: none;">
+                <button class="checkin-btn primary" onclick="submitCheckIn()">✓ 确认已知晓</button>
+            </div>
+
+            <!-- text: Text input -->
+            <div id="textInput" class="input-section" style="display: none;">
+                <textarea id="textContent" placeholder="请输入文字描述..." rows="4"></textarea>
+                <button class="checkin-btn primary" id="submitCheckInBtn" onclick="submitCheckIn()">提交打卡</button>
+            </div>
+
+            <!-- image: Photo upload -->
+            <div id="imageInput" class="input-section" style="display: none;">
+                <div class="preview-zone" id="imagePreviewZone">
+                    <img id="imagePreview" style="display: none;" alt="Image preview" />
+                    <div class="placeholder" id="imagePlaceholder">
+                        <svg class="upload-icon" viewBox="0 0 56 56">
+                            <rect x="4" y="4" width="48" height="48" rx="12" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4"/>
+                            <path d="M28 20V36M20 28H36" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                        </svg>
+                        <p>点击拍照</p>
+                    </div>
+                </div>
+                <input type="file" id="imageFileInput" accept="image/*" capture="environment" style="display: none;">
+                <button class="checkin-btn secondary" onclick="document.getElementById('imageFileInput').click()">📷 拍照打卡</button>
+                <button class="checkin-btn primary" id="submitImageBtn" style="display: none;" onclick="submitCheckIn()">提交打卡</button>
+            </div>
+
+            <!-- voice: Audio recording -->
+            <div id="voiceInput" class="input-section" style="display: none;">
+                <div class="voice-visualizer" id="voiceVisualizer">
+                    <div class="mic-icon">🎤</div>
+                    <p id="voiceStatus">按住录音</p>
+                </div>
+                <audio id="audioPlayer" controls style="display: none;"></audio>
+                <button class="checkin-btn record" id="startRecordBtn"
+                    ontouchstart="startRecording(event)"
+                    ontouchend="stopRecording(event)"
+                    onmousedown="startRecording(event)"
+                    onmouseup="stopRecording(event)">
+                    按住说话
+                </button>
+                <button class="checkin-btn record" id="stopRecordBtn" style="display: none;"
+                    onclick="stopRecording(event)">
+                    停止录音
+                </button>
+                <button class="checkin-btn primary" id="submitVoiceBtn" style="display: none;" onclick="submitCheckIn()">提交打卡</button>
+            </div>
+
+            <!-- video: Video recording -->
+            <div id="videoInput" class="input-section" style="display: none;">
+                <div class="preview-zone">
+                    <video id="videoPreview" style="display: none;"></video>
+                    <div class="placeholder" id="videoPlaceholder">
+                        <svg class="upload-icon" viewBox="0 0 56 56">
+                            <circle cx="28" cy="28" r="20" stroke="currentColor" stroke-width="2" fill="none"/>
+                            <circle cx="28" cy="28" r="6" fill="currentColor"/>
+                        </svg>
+                        <p>录制视频</p>
+                    </div>
+                </div>
+                <button class="checkin-btn secondary" id="toggleVideoBtn" onclick="toggleVideoRecording()">🎬 开始录制</button>
+                <button class="checkin-btn primary" id="submitVideoBtn" style="display: none;" onclick="submitCheckIn()">提交打卡</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

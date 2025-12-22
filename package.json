@@ -1,0 +1,26 @@
+{
+  "name": "kbd-of-smartice",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "KBD restaurant check-in system for SmartICE",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "generate-types": "supabase gen types typescript --linked > src/types/database.types.ts"
+  },
+  "keywords": ["kbd", "smartice", "check-in"],
+  "author": "SmartICE",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.21",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.1",
+    "vite-plugin-html": "^3.2.2"
+  }
+}
