@@ -1,7 +1,7 @@
-// Version: 5.9 - Fixed updateAllMarkers to target inner .avatar-marker element (not Leaflet wrapper)
+// Version: 6.5 - Added night mode map theme (auto-activates after 18:00)
 // Map Module - Leaflet.js map initialization and marker management
 // Philosophy: Rely on browser's built-in HTTP cache to minimize API requests
-// Handles: Map initialization, marker creation, marker updates, restaurant navigation, history panel, media preview
+// Handles: Map initialization, marker creation, marker updates, restaurant navigation, history panel, media preview, night theme
 
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -23,6 +23,61 @@ export class MapModule {
   private static historyHasMore: boolean = true;
   private static historyLoading: boolean = false;
   private static currentRestaurantId: string | null = null;
+
+  /**
+   * Check if URL is a video file based on extension
+   */
+  private static isVideoUrl(url: string): boolean {
+    const ext = url.split('.').pop()?.toLowerCase() || '';
+    return ['mp4', 'mov', 'webm', 'ogg', 'avi'].includes(ext);
+  }
+
+  /**
+   * Check if URL is an audio file based on extension
+   */
+  private static isAudioUrl(url: string): boolean {
+    const ext = url.split('.').pop()?.toLowerCase() || '';
+    return ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'webm'].includes(ext);
+  }
+
+  /**
+   * Create thumbnail element (image or video placeholder icon)
+   */
+  private static createThumbnailElement(mediaUrl: string, restaurantId: string, isVisible: boolean): string {
+    const isVideo = this.isVideoUrl(mediaUrl);
+    const isAudio = this.isAudioUrl(mediaUrl);
+
+    if (isVideo) {
+      // Video: show video icon placeholder instead of trying to load video as image
+      return `
+        <div class="avatar-thumbnail ${isVisible ? 'visible' : ''}" id="thumb-${restaurantId}">
+          <div class="video-thumb-placeholder">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </div>
+        </div>
+      `;
+    } else if (isAudio) {
+      // Audio: show audio icon placeholder
+      return `
+        <div class="avatar-thumbnail ${isVisible ? 'visible' : ''}" id="thumb-${restaurantId}">
+          <div class="audio-thumb-placeholder">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+            </svg>
+          </div>
+        </div>
+      `;
+    } else {
+      // Image: use img tag
+      return `
+        <div class="avatar-thumbnail ${isVisible ? 'visible' : ''}" id="thumb-${restaurantId}">
+          <img src="${mediaUrl}" alt="">
+        </div>
+      `;
+    }
+  }
 
   /**
    * LocalStorage key format for read status: kbd_read_{restaurantId}_{date}_{slotType}
@@ -87,12 +142,12 @@ export class MapModule {
     if (userHasValidCoords) {
       centerLat = parseFloat(String(userRestaurant!.latitude));
       centerLng = parseFloat(String(userRestaurant!.longitude));
-      initialZoom = 13;
+      initialZoom = 16;
       console.log('[MAP] Centering on user restaurant:', userRestaurant!.restaurant_name);
     } else if (validRestaurants.length > 0) {
       centerLat = validRestaurants.reduce((sum, r) => sum + parseFloat(String(r.latitude)), 0) / validRestaurants.length;
       centerLng = validRestaurants.reduce((sum, r) => sum + parseFloat(String(r.longitude)), 0) / validRestaurants.length;
-      initialZoom = 11;
+      initialZoom = 16;
       console.log('[MAP] User restaurant not found or invalid coords, using average center of', validRestaurants.length, 'valid restaurants');
     } else {
       // Fallback to default coordinates if no valid restaurants
@@ -143,6 +198,9 @@ export class MapModule {
     restaurants.forEach((restaurant, index) => {
       this.addMarker(restaurant, index);
     });
+
+    // Auto-set theme based on current time (night mode after 18:00)
+    this.autoSetTheme();
   }
 
   /**
@@ -182,13 +240,13 @@ export class MapModule {
     const markerEl = document.createElement('div');
     markerEl.className = `avatar-marker ${isChecked ? 'checked' : 'not-checked'} ${isCurrentUser ? 'current-user' : ''}`;
     markerEl.setAttribute('data-id', restaurant.id);
+
+    // Create thumbnail HTML using helper method
+    const thumbnailHtml = thumbnailUrl ? this.createThumbnailElement(thumbnailUrl, restaurant.id, Boolean(showThumbnail)) : '';
+
     markerEl.innerHTML = `
             <div class="completion-badge"></div>
-            ${thumbnailUrl ? `
-            <div class="avatar-thumbnail ${showThumbnail ? 'visible' : ''}" id="thumb-${restaurant.id}">
-                <img src="${thumbnailUrl}" alt="">
-            </div>
-            ` : ''}
+            ${thumbnailHtml}
             ${textContent ? `
             <div class="avatar-text-bubble ${showTextBubble ? 'visible' : ''}" id="text-${restaurant.id}">
                 <span class="text-quote">"${textContent}"</span>
@@ -220,6 +278,8 @@ export class MapModule {
       if (markerElement) {
         const avatarImg = markerElement.querySelector('.avatar-img');
         const thumbnailElement = markerElement.querySelector('.avatar-thumbnail img');
+        const videoPlaceholder = markerElement.querySelector('.video-thumb-placeholder');
+        const audioPlaceholder = markerElement.querySelector('.audio-thumb-placeholder');
 
         if (avatarImg) {
           avatarImg.addEventListener('click', (e) => {
@@ -228,8 +288,18 @@ export class MapModule {
           });
         }
 
+        // Click on image thumbnail
         if (thumbnailElement) {
           thumbnailElement.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.previewMedia(restaurant);
+          });
+        }
+
+        // Click on video/audio placeholder
+        if (videoPlaceholder || audioPlaceholder) {
+          const placeholder = videoPlaceholder || audioPlaceholder;
+          placeholder?.addEventListener('click', (e) => {
             e.stopPropagation();
             this.previewMedia(restaurant);
           });
@@ -274,31 +344,41 @@ export class MapModule {
           // Update thumbnail
           const thumbnailContainer = markerElement.querySelector('.avatar-thumbnail');
           const thumbnailImg = thumbnailContainer?.querySelector('img') as HTMLImageElement | null;
+          const isVideoFile = newThumbnailUrl ? this.isVideoUrl(newThumbnailUrl) : false;
+          const isAudioFile = newThumbnailUrl ? this.isAudioUrl(newThumbnailUrl) : false;
 
           if (newThumbnailUrl) {
-            if (thumbnailContainer && thumbnailImg) {
-              // Update existing thumbnail
+            // For images: update existing or create new
+            if (thumbnailContainer && thumbnailImg && !isVideoFile && !isAudioFile) {
+              // Update existing image thumbnail
               if (thumbnailImg.src !== newThumbnailUrl) {
                 thumbnailImg.src = newThumbnailUrl;
               }
               thumbnailContainer.classList.toggle('visible', Boolean(showThumbnail));
+            } else if (thumbnailContainer && (isVideoFile || isAudioFile)) {
+              // Already has placeholder, just update visibility
+              thumbnailContainer.classList.toggle('visible', Boolean(showThumbnail));
             } else {
-              // Create new thumbnail
-              const newThumbnail = document.createElement('div');
-              newThumbnail.className = `avatar-thumbnail ${showThumbnail ? 'visible' : ''}`;
-              newThumbnail.id = `thumb-${restaurant.id}`;
-              newThumbnail.innerHTML = `<img src="${newThumbnailUrl}" alt="">`;
+              // Create new thumbnail (use helper for proper video/audio handling)
+              const tempDiv = document.createElement('div');
+              tempDiv.innerHTML = this.createThumbnailElement(newThumbnailUrl, restaurant.id, Boolean(showThumbnail));
+              const newThumbnail = tempDiv.firstElementChild as HTMLElement;
+
               const avatarImg = markerElement.querySelector('.avatar-img');
-              if (avatarImg?.parentElement) {
+              if (avatarImg?.parentElement && newThumbnail) {
                 // Insert before avatar-img within the avatar-marker container
                 avatarImg.parentElement.insertBefore(newThumbnail, avatarImg);
               }
 
               // Re-attach click handler
               setTimeout(() => {
-                const img = newThumbnail.querySelector('img');
-                if (img) {
-                  img.addEventListener('click', (e) => {
+                const img = newThumbnail?.querySelector('img');
+                const videoPlaceholder = newThumbnail?.querySelector('.video-thumb-placeholder');
+                const audioPlaceholder = newThumbnail?.querySelector('.audio-thumb-placeholder');
+
+                const clickTarget = img || videoPlaceholder || audioPlaceholder;
+                if (clickTarget) {
+                  clickTarget.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.previewMedia(restaurant);
                   });
@@ -381,7 +461,7 @@ export class MapModule {
     if (marker && this.map) {
       console.log('[MAP] Focusing on restaurant:', restaurantId);
       const latlng = marker.getLatLng();
-      this.map.flyTo([latlng.lat, latlng.lng], 15, {
+      this.map.flyTo([latlng.lat, latlng.lng], 16, {
         duration: 0.4  // Fast animation (0.4 seconds)
       });
 
@@ -417,6 +497,108 @@ export class MapModule {
     this.map.flyTo([this.initialView.lat, this.initialView.lng], this.initialView.zoom, {
       duration: 0.4  // Fast animation (0.4 seconds)
     });
+  }
+
+  /**
+   * Time-of-day theme types
+   */
+  static readonly THEMES = ['sunrise', 'day', 'sunset', 'night'] as const;
+  static currentTheme: typeof MapModule.THEMES[number] | null = null;
+
+  /**
+   * Set map theme based on time of day
+   * Only affects tile layer, not markers/avatars
+   */
+  static setTheme(theme: typeof MapModule.THEMES[number]): void {
+    const mapElement = document.getElementById('map');
+    if (!mapElement) return;
+
+    // Remove all theme classes
+    this.THEMES.forEach(t => mapElement.classList.remove(`theme-${t}`));
+
+    // Add new theme class
+    mapElement.classList.add(`theme-${theme}`);
+    this.currentTheme = theme;
+
+    console.log('[MAP] Theme set to:', theme);
+  }
+
+  /**
+   * Get theme based on current hour
+   * Night: >= 18:00, Day: < 18:00
+   */
+  static getThemeForHour(hour: number): typeof MapModule.THEMES[number] | null {
+    if (hour >= 18 || hour < 6) return 'night';
+    return null;  // No filter during daytime
+  }
+
+  /**
+   * Auto-set theme based on current time
+   */
+  static autoSetTheme(): void {
+    const hour = new Date().getHours();
+    const theme = this.getThemeForHour(hour);
+    if (theme) {
+      this.setTheme(theme);
+    } else {
+      this.clearTheme();
+    }
+  }
+
+  /**
+   * Clear theme (return to default)
+   */
+  static clearTheme(): void {
+    const mapElement = document.getElementById('map');
+    if (!mapElement) return;
+
+    this.THEMES.forEach(t => mapElement.classList.remove(`theme-${t}`));
+    this.currentTheme = null;
+    console.log('[MAP] Theme cleared');
+  }
+
+  /**
+   * Show loading spinner on avatar during upload
+   */
+  static showAvatarSpinner(restaurantId: string): void {
+    const marker = this.markers[restaurantId];
+    if (!marker) {
+      console.warn('[MAP] Cannot show spinner: marker not found for', restaurantId);
+      return;
+    }
+
+    const markerElement = marker.getElement();
+    if (!markerElement) return;
+
+    const avatarMarker = markerElement.querySelector('.avatar-marker');
+    if (!avatarMarker) return;
+
+    // Check if spinner already exists
+    if (avatarMarker.querySelector('.avatar-spinner')) return;
+
+    // Create spinner element
+    const spinner = document.createElement('div');
+    spinner.className = 'avatar-spinner';
+    avatarMarker.insertBefore(spinner, avatarMarker.firstChild);
+
+    console.log('[MAP] Avatar spinner shown for:', restaurantId);
+  }
+
+  /**
+   * Hide loading spinner on avatar after upload
+   */
+  static hideAvatarSpinner(restaurantId: string): void {
+    const marker = this.markers[restaurantId];
+    if (!marker) return;
+
+    const markerElement = marker.getElement();
+    if (!markerElement) return;
+
+    const spinner = markerElement.querySelector('.avatar-spinner');
+    if (spinner) {
+      spinner.remove();
+      console.log('[MAP] Avatar spinner hidden for:', restaurantId);
+    }
   }
 
   /**
@@ -561,17 +743,52 @@ export class MapModule {
     const slotName = slotTypeNames[record.slot_type] || record.slot_type;
     const taskName = record.task?.task_name || '打卡任务';
 
-    // Create thumbnail if media exists
-    const thumbnailHtml = record.media_urls && record.media_urls.length > 0
-      ? `<div class="history-item-thumbnail">
-           <img src="${record.media_urls[0]}" alt="打卡照片" />
-         </div>`
+    // Create thumbnail HTML based on media type (image, video, audio, or text)
+    let thumbnailHtml = '';
+    const firstMediaUrl = record.media_urls?.[0];
+
+    if (firstMediaUrl) {
+      const isVideo = this.isVideoUrl(firstMediaUrl);
+      const isAudio = this.isAudioUrl(firstMediaUrl);
+
+      if (isVideo) {
+        // Video placeholder icon
+        thumbnailHtml = `
+          <div class="history-item-thumbnail history-video-thumb">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </div>
+        `;
+      } else if (isAudio) {
+        // Audio placeholder icon
+        thumbnailHtml = `
+          <div class="history-item-thumbnail history-audio-thumb">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+            </svg>
+          </div>
+        `;
+      } else {
+        // Image thumbnail
+        thumbnailHtml = `
+          <div class="history-item-thumbnail">
+            <img src="${firstMediaUrl}" alt="打卡照片" />
+          </div>
+        `;
+      }
+    }
+
+    // Create text content display (for text-type check-ins)
+    const textContentHtml = record.text_content
+      ? `<div class="history-item-text">"${record.text_content}"</div>`
       : '';
 
     item.innerHTML = `
       ${thumbnailHtml}
       <div class="history-item-content">
         <div class="history-item-title">${taskName}</div>
+        ${textContentHtml}
         <div class="history-item-meta">
           <span class="history-item-date">${dateStr}</span>
           <span class="history-item-time">${timeStr}</span>
@@ -580,11 +797,11 @@ export class MapModule {
       </div>
     `;
 
-    // Add click handler for thumbnail preview
+    // Add click handler for media preview
     if (record.media_urls && record.media_urls.length > 0) {
       const thumbnail = item.querySelector('.history-item-thumbnail');
       thumbnail?.addEventListener('click', () => {
-        this.previewMediaUrl(record.media_urls![0]!);
+        this.previewMediaUrls(record.media_urls!);
       });
     }
 
@@ -622,216 +839,407 @@ export class MapModule {
   }
 
   /**
-   * Preview media URL (for history items)
+   * Preview media URL (for history items - single URL, simple view)
    */
   private static previewMediaUrl(mediaUrl: string): void {
-    console.log('[MAP] Previewing media:', mediaUrl);
+    // Delegate to previewMediaUrls for consistency
+    this.previewMediaUrls([mediaUrl]);
+  }
 
+  /**
+   * Preview multiple media URLs (gallery modal with swipe and long-press download)
+   * Used by history panel to preview all media from a check-in record
+   */
+  private static previewMediaUrls(mediaUrls: string[]): void {
+    if (mediaUrls.length === 0) {
+      console.warn('[MAP] No media to preview');
+      return;
+    }
+
+    console.log('[MAP] Previewing media gallery:', mediaUrls.length, 'items');
+
+    // Create overlay (semi-transparent background)
     const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.9);
-      z-index: 10000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    `;
+    overlay.className = 'media-preview-overlay';
 
-    const img = document.createElement('img');
-    img.src = mediaUrl;
-    img.style.cssText = `
-      max-width: 90vw;
-      max-height: 90vh;
-      object-fit: contain;
-    `;
+    // Create modal container (centered popup, not fullscreen)
+    const modal = document.createElement('div');
+    modal.className = 'media-preview-modal';
 
-    overlay.appendChild(img);
-    overlay.addEventListener('click', () => overlay.remove());
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'close-btn';
+    closeBtn.innerHTML = '✕';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      overlay.remove();
+    });
+    modal.appendChild(closeBtn);
+
+    // Create gallery container
+    const gallery = document.createElement('div');
+    gallery.className = 'media-gallery';
+
+    const track = document.createElement('div');
+    track.className = 'media-gallery-track';
+
+    let currentIndex = 0;
+
+    // Add media items to track
+    mediaUrls.forEach((url, index) => {
+      const item = document.createElement('div');
+      item.className = 'media-gallery-item';
+
+      const ext = url.split('.').pop()?.toLowerCase() || '';
+      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext);
+      const isVideo = ['mp4', 'mov', 'webm', 'ogg'].includes(ext);
+      const isAudio = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'webm'].includes(ext);
+
+      if (isImage) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = `Image ${index + 1}`;
+        img.draggable = false;
+        item.appendChild(img);
+      } else if (isVideo) {
+        const video = document.createElement('video');
+        video.src = url;
+        video.controls = true;
+        video.addEventListener('click', (e) => e.stopPropagation());
+        item.appendChild(video);
+      } else if (isAudio) {
+        const audioContainer = document.createElement('div');
+        audioContainer.innerHTML = `
+          <div style="font-size: 64px; margin-bottom: 16px;">🎵</div>
+        `;
+        const audio = document.createElement('audio');
+        audio.src = url;
+        audio.controls = true;
+        audio.addEventListener('click', (e) => e.stopPropagation());
+        audioContainer.appendChild(audio);
+        item.appendChild(audioContainer);
+      }
+
+      track.appendChild(item);
+    });
+
+    gallery.appendChild(track);
+    modal.appendChild(gallery);
+
+    // Update track position
+    const updateTrackPosition = () => {
+      track.style.transform = `translateX(-${currentIndex * 100}%)`;
+    };
+
+    // Add navigation if multiple images
+    if (mediaUrls.length > 1) {
+      // Navigation arrows
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'gallery-nav prev';
+      prevBtn.innerHTML = '‹';
+      prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (currentIndex > 0) {
+          currentIndex--;
+          updateTrackPosition();
+          updateDots();
+        }
+      });
+      gallery.appendChild(prevBtn);
+
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'gallery-nav next';
+      nextBtn.innerHTML = '›';
+      nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (currentIndex < mediaUrls.length - 1) {
+          currentIndex++;
+          updateTrackPosition();
+          updateDots();
+        }
+      });
+      gallery.appendChild(nextBtn);
+
+      // Dots indicator
+      const dots = document.createElement('div');
+      dots.className = 'gallery-dots';
+      mediaUrls.forEach((_, index) => {
+        const dot = document.createElement('div');
+        dot.className = `gallery-dot ${index === 0 ? 'active' : ''}`;
+        dot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          currentIndex = index;
+          updateTrackPosition();
+          updateDots();
+        });
+        dots.appendChild(dot);
+      });
+      modal.appendChild(dots);
+
+      const updateDots = () => {
+        dots.querySelectorAll('.gallery-dot').forEach((dot, i) => {
+          dot.classList.toggle('active', i === currentIndex);
+        });
+      };
+
+      // Swipe support
+      let touchStartX = 0;
+
+      gallery.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0]?.clientX || 0;
+      });
+
+      gallery.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0]?.clientX || 0;
+        const diff = touchStartX - touchEndX;
+
+        if (Math.abs(diff) > 50) {
+          if (diff > 0 && currentIndex < mediaUrls.length - 1) {
+            currentIndex++;
+          } else if (diff < 0 && currentIndex > 0) {
+            currentIndex--;
+          }
+          updateTrackPosition();
+          updateDots();
+        }
+      });
+    }
+
+    overlay.appendChild(modal);
+
+    // Close on overlay click (not modal)
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        overlay.remove();
+      }
+    });
+
     document.body.appendChild(overlay);
   }
 
   /**
-   * Preview media from check-in (DEV-8: improved with image/audio/video support)
+   * Preview media from check-in (gallery modal with swipe and long-press download)
    */
   static previewMedia(restaurant: Restaurant): void {
-    const mediaUrl = restaurant.checkInData?.media_urls?.[0];
-    if (!mediaUrl) {
+    const mediaUrls = restaurant.checkInData?.media_urls || [];
+    if (mediaUrls.length === 0) {
       console.warn('[MAP] No media to preview for:', restaurant.restaurant_name);
       return;
     }
 
-    console.log('[MAP] Previewing media:', mediaUrl);
+    console.log('[MAP] Previewing media gallery:', mediaUrls.length, 'items');
 
     // Mark as read for future use
     if (restaurant.checkInData) {
       this.markCheckInAsRead(restaurant.id, restaurant.checkInData.check_in_date, restaurant.checkInData.slot_type);
     }
 
-    // Determine media type from URL extension
-    const ext = mediaUrl.split('.').pop()?.toLowerCase() || '';
-    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext);
-    const isVideo = ['mp4', 'mov', 'webm', 'ogg'].includes(ext);
-    const isAudio = ['mp3', 'wav', 'ogg', 'm4a', 'aac'].includes(ext);
-
-    // Create overlay
+    // Create overlay (semi-transparent background)
     const overlay = document.createElement('div');
     overlay.className = 'media-preview-overlay';
-    overlay.style.cssText = `
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.95);
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      cursor: pointer;
-      padding: 20px;
-    `;
+
+    // Create modal container (centered popup, not fullscreen)
+    const modal = document.createElement('div');
+    modal.className = 'media-preview-modal';
 
     // Close button
     const closeBtn = document.createElement('button');
+    closeBtn.className = 'close-btn';
     closeBtn.innerHTML = '✕';
-    closeBtn.style.cssText = `
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: rgba(255,255,255,0.9);
-      border: none;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      font-size: 24px;
-      color: #333;
-      cursor: pointer;
-      z-index: 10001;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-    `;
-    closeBtn.addEventListener('mouseenter', () => {
-      closeBtn.style.background = '#fff';
-      closeBtn.style.transform = 'scale(1.1)';
-    });
-    closeBtn.addEventListener('mouseleave', () => {
-      closeBtn.style.background = 'rgba(255,255,255,0.9)';
-      closeBtn.style.transform = 'scale(1)';
-    });
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       overlay.remove();
     });
-    overlay.appendChild(closeBtn);
+    modal.appendChild(closeBtn);
 
-    // Create media element based on type
-    let mediaElement: HTMLElement;
+    // Create gallery container
+    const gallery = document.createElement('div');
+    gallery.className = 'media-gallery';
 
-    if (isImage) {
-      // Image preview with zoom support
-      const img = document.createElement('img');
-      img.src = mediaUrl;
-      img.style.cssText = `
-        max-width: 90vw;
-        max-height: 90vh;
-        object-fit: contain;
-        cursor: zoom-in;
-        transition: transform 0.3s;
-      `;
+    const track = document.createElement('div');
+    track.className = 'media-gallery-track';
 
-      let zoomed = false;
-      img.addEventListener('click', (e) => {
+    let currentIndex = 0;
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Add media items to track
+    mediaUrls.forEach((url, index) => {
+      const item = document.createElement('div');
+      item.className = 'media-gallery-item';
+
+      const ext = url.split('.').pop()?.toLowerCase() || '';
+      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext);
+      const isVideo = ['mp4', 'mov', 'webm', 'ogg'].includes(ext);
+      const isAudio = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'webm'].includes(ext);
+
+      if (isImage) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = `Image ${index + 1}`;
+        img.draggable = false;
+
+        // Long-press to download
+        img.addEventListener('touchstart', (e) => {
+          longPressTimer = setTimeout(() => {
+            this.downloadMedia(url, `image_${index + 1}.${ext}`);
+          }, 800);
+        });
+        img.addEventListener('touchend', () => {
+          if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+          }
+        });
+        img.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          this.downloadMedia(url, `image_${index + 1}.${ext}`);
+        });
+
+        item.appendChild(img);
+      } else if (isVideo) {
+        const video = document.createElement('video');
+        video.src = url;
+        video.controls = true;
+        video.addEventListener('click', (e) => e.stopPropagation());
+        item.appendChild(video);
+      } else if (isAudio) {
+        const audioContainer = document.createElement('div');
+        audioContainer.innerHTML = `
+          <div style="font-size: 64px; margin-bottom: 16px;">🎵</div>
+        `;
+        const audio = document.createElement('audio');
+        audio.src = url;
+        audio.controls = true;
+        audio.addEventListener('click', (e) => e.stopPropagation());
+        audioContainer.appendChild(audio);
+        item.appendChild(audioContainer);
+      }
+
+      track.appendChild(item);
+    });
+
+    gallery.appendChild(track);
+    modal.appendChild(gallery);
+
+    // Update track position
+    const updateTrackPosition = () => {
+      track.style.transform = `translateX(-${currentIndex * 100}%)`;
+    };
+
+    // Add navigation if multiple images
+    if (mediaUrls.length > 1) {
+      // Navigation arrows
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'gallery-nav prev';
+      prevBtn.innerHTML = '‹';
+      prevBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (!zoomed) {
-          img.style.maxWidth = '150vw';
-          img.style.maxHeight = '150vh';
-          img.style.cursor = 'zoom-out';
-          img.style.transform = 'scale(1.5)';
-          zoomed = true;
-        } else {
-          img.style.maxWidth = '90vw';
-          img.style.maxHeight = '90vh';
-          img.style.cursor = 'zoom-in';
-          img.style.transform = 'scale(1)';
-          zoomed = false;
+        if (currentIndex > 0) {
+          currentIndex--;
+          updateTrackPosition();
+          updateDots();
         }
       });
+      gallery.appendChild(prevBtn);
 
-      mediaElement = img;
-    } else if (isVideo) {
-      // Video preview with controls
-      const video = document.createElement('video');
-      video.src = mediaUrl;
-      video.controls = true;
-      video.autoplay = true;
-      video.style.cssText = `
-        max-width: 90vw;
-        max-height: 90vh;
-        outline: none;
-      `;
-
-      video.addEventListener('click', (e) => {
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'gallery-nav next';
+      nextBtn.innerHTML = '›';
+      nextBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (currentIndex < mediaUrls.length - 1) {
+          currentIndex++;
+          updateTrackPosition();
+          updateDots();
+        }
+      });
+      gallery.appendChild(nextBtn);
+
+      // Dots indicator
+      const dots = document.createElement('div');
+      dots.className = 'gallery-dots';
+      mediaUrls.forEach((_, index) => {
+        const dot = document.createElement('div');
+        dot.className = `gallery-dot ${index === 0 ? 'active' : ''}`;
+        dot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          currentIndex = index;
+          updateTrackPosition();
+          updateDots();
+        });
+        dots.appendChild(dot);
+      });
+      modal.appendChild(dots);
+
+      const updateDots = () => {
+        dots.querySelectorAll('.gallery-dot').forEach((dot, i) => {
+          dot.classList.toggle('active', i === currentIndex);
+        });
+      };
+
+      // Swipe support
+      let touchStartX = 0;
+      let touchEndX = 0;
+
+      gallery.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0]?.clientX || 0;
       });
 
-      mediaElement = video;
-    } else if (isAudio) {
-      // Audio preview with waveform visualization
-      const audioContainer = document.createElement('div');
-      audioContainer.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 20px;
-      `;
+      gallery.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0]?.clientX || 0;
+        const diff = touchStartX - touchEndX;
 
-      const icon = document.createElement('div');
-      icon.innerHTML = '🎵';
-      icon.style.cssText = `
-        font-size: 80px;
-        margin-bottom: 20px;
-      `;
-
-      const audio = document.createElement('audio');
-      audio.src = mediaUrl;
-      audio.controls = true;
-      audio.autoplay = true;
-      audio.style.cssText = `
-        width: 400px;
-        max-width: 90vw;
-        outline: none;
-      `;
-
-      audio.addEventListener('click', (e) => {
-        e.stopPropagation();
+        if (Math.abs(diff) > 50) {
+          if (diff > 0 && currentIndex < mediaUrls.length - 1) {
+            currentIndex++;
+          } else if (diff < 0 && currentIndex > 0) {
+            currentIndex--;
+          }
+          updateTrackPosition();
+          updateDots();
+        }
       });
-
-      audioContainer.appendChild(icon);
-      audioContainer.appendChild(audio);
-      mediaElement = audioContainer;
-    } else {
-      // Fallback for unknown types
-      const fallback = document.createElement('div');
-      fallback.style.cssText = `
-        color: white;
-        font-size: 16px;
-        text-align: center;
-      `;
-      fallback.innerHTML = `
-        <p>无法预览此文件类型</p>
-        <a href="${mediaUrl}" target="_blank" style="color: #3b82f6; text-decoration: underline;">打开链接查看</a>
-      `;
-      mediaElement = fallback;
     }
 
-    overlay.appendChild(mediaElement);
+    // Download hint
+    const hint = document.createElement('div');
+    hint.className = 'download-hint';
+    hint.textContent = '长按图片保存';
+    modal.appendChild(hint);
 
-    // Close on overlay click (but not media click)
-    overlay.addEventListener('click', () => overlay.remove());
+    overlay.appendChild(modal);
+
+    // Close on overlay click (not modal)
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        overlay.remove();
+      }
+    });
 
     document.body.appendChild(overlay);
+  }
+
+  /**
+   * Download media file
+   */
+  private static downloadMedia(url: string, filename: string): void {
+    console.log('[MAP] Downloading media:', filename);
+
+    // Create temporary link for download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.target = '_blank';
+
+    // For cross-origin URLs, just open in new tab
+    if (!url.startsWith(window.location.origin)) {
+      window.open(url, '_blank');
+      return;
+    }
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 }
 

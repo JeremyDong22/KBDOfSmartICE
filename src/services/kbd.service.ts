@@ -1,4 +1,4 @@
-// Version: 3.2 - Fixed checkInData missing check_in_date and slot_type fields
+// Version: 3.6 - Display mode shows white (unchecked) instead of green (checked)
 // KBD business logic service with type safety
 
 import { supabaseClient } from './supabase';
@@ -11,11 +11,13 @@ export class KBDService {
   /**
    * Get today's task for a specific restaurant and slot
    * Priority: 1. Temporary tasks, 2. Fixed routine tasks, 3. Weighted random routine tasks
+   * @param customTime - Optional custom time (for dev/testing), if null uses current time
    */
-  static async getTodayTask(restaurantId: string, slotType: SlotType): Promise<Task | null> {
+  static async getTodayTask(restaurantId: string, slotType: SlotType, customTime: Date | null = null): Promise<Task | null> {
     try {
-      const today = new Date().toISOString().split('T')[0]!;
-      const weekday = new Date().getDay() || 7;
+      const now = customTime || new Date();
+      const today = now.toISOString().split('T')[0]!;
+      const weekday = now.getDay() || 7;  // 0=Sunday becomes 7 for consistency
       const cacheKey = `${restaurantId}_${slotType}_${today}`;
 
       // Check cache
@@ -141,18 +143,26 @@ export class KBDService {
       console.log('[KBDService] Check-in submitted successfully');
       return { success: true, record: record as unknown as CheckInRecord };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[KBDService] Check-in error:', errorMessage);
+      // Handle Supabase errors (they have message property but aren't Error instances)
+      const errorMessage = error instanceof Error
+        ? error.message
+        : (error as any)?.message || (error as any)?.code || JSON.stringify(error);
+      console.error('[KBDService] Check-in error:', error);
       return { success: false, error: errorMessage };
     }
   }
 
   /**
    * Get all restaurants with check-in status for today
+   * @param slotType - Slot type to check status for
+   * @param displayMode - If true, show all restaurants as checked (for display outside time window)
+   * @param customTime - Optional custom time (for dev/testing), if null uses current time
    */
-  static async getRestaurantsWithStatus(slotType: SlotType, displayMode: boolean = false): Promise<Restaurant[]> {
+  static async getRestaurantsWithStatus(slotType: SlotType, displayMode: boolean = false, customTime: Date | null = null): Promise<Restaurant[]> {
     try {
-      const today = new Date().toISOString().split('T')[0]!;
+      const now = customTime || new Date();
+      const today = now.toISOString().split('T')[0]!;
+      console.log('[KBDService] Getting restaurants with status for date:', today, 'slot:', slotType);
 
       // Get all restaurants
       const { data: restaurants, error: restaurantError } = await supabaseClient
@@ -178,7 +188,7 @@ export class KBDService {
       // Get all check-in records for today
       const { data: checkIns, error: checkInError } = await supabaseClient
         .from('kbd_check_in_record')
-        .select('restaurant_id, media_urls, check_in_date, slot_type')
+        .select('restaurant_id, media_urls, check_in_date, slot_type, text_content')
         .eq('check_in_date', today)
         .eq('slot_type', slotType!);
 
@@ -204,7 +214,7 @@ export class KBDService {
       return restaurantList.map((r: any) => ({
         ...r,
         master_employee: employeeMap.get(r.id) || [],
-        checked: displayMode ? true : checkInMap.has(r.id), // In display mode, show all as checked
+        checked: displayMode ? false : checkInMap.has(r.id), // In display mode, show all as NOT checked (white)
         checkInData: checkInMap.get(r.id),
         displayMode: displayMode // Flag to indicate display mode
       })) as Restaurant[];

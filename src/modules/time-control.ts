@@ -1,6 +1,6 @@
-// Version: 1.0 - DEV Time Control Module
+// Version: 2.0 - Added date control for cross-day testing
 // Time Control Module - Developer time simulation with collapsible clock interface
-// Handles: Simulated time state, time adjustments, auto-ticking clock, time window boundary detection
+// Handles: Simulated time state, time and date adjustments, auto-ticking clock, time window boundary detection
 
 console.log('[TIME] Module loaded');
 
@@ -112,10 +112,13 @@ export class TimeControlModule {
   /**
    * Adjust time by delta
    */
-  private static adjustTime(unit: 'hour' | 'minute' | 'second', delta: number): void {
+  private static adjustTime(unit: 'hour' | 'minute' | 'second' | 'day', delta: number): void {
     const currentTime = this.getCurrentTime();
 
     switch (unit) {
+      case 'day':
+        currentTime.setDate(currentTime.getDate() + delta);
+        break;
       case 'hour':
         currentTime.setHours(currentTime.getHours() + delta);
         break;
@@ -131,7 +134,7 @@ export class TimeControlModule {
     this.updateDisplay();
     this.checkTimeWindowBoundary();
 
-    console.log('[TIME] Adjusted', unit, 'by', delta, '- New time:', this.formatTime(this.devTime));
+    console.log('[TIME] Adjusted', unit, 'by', delta, '- New time:', this.formatDateTime(this.devTime));
   }
 
   /**
@@ -173,14 +176,25 @@ export class TimeControlModule {
   private static updateDisplay(): void {
     const currentTime = this.getCurrentTime();
     const timeString = this.formatTime(currentTime);
+    const dateString = this.formatDate(currentTime);
 
+    const dateDisplayElement = document.getElementById('devDateDisplay');
     const displayElement = document.getElementById('devTimeDisplay');
+    const dayElement = document.getElementById('devDay');
     const hourElement = document.getElementById('devHour');
     const minuteElement = document.getElementById('devMinute');
     const secondElement = document.getElementById('devSecond');
 
+    if (dateDisplayElement) {
+      dateDisplayElement.textContent = dateString;
+    }
+
     if (displayElement) {
       displayElement.textContent = timeString;
+    }
+
+    if (dayElement) {
+      dayElement.textContent = String(currentTime.getDate()).padStart(2, '0');
     }
 
     if (hourElement) {
@@ -204,6 +218,23 @@ export class TimeControlModule {
     const minutes = String(date.getMinutes()).padStart(2, '0');
     const seconds = String(date.getSeconds()).padStart(2, '0');
     return `${hours}:${minutes}:${seconds}`;
+  }
+
+  /**
+   * Format date as YYYY-MM-DD
+   */
+  private static formatDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  /**
+   * Format datetime as YYYY-MM-DD HH:MM:SS
+   */
+  private static formatDateTime(date: Date): string {
+    return `${this.formatDate(date)} ${this.formatTime(date)}`;
   }
 
   /**

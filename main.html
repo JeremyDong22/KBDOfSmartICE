@@ -46,8 +46,15 @@
         </button>
         <div class="time-control-content">
             <h4>开发者时钟</h4>
+            <div class="date-display" id="devDateDisplay">2025-12-23</div>
             <div class="time-display" id="devTimeDisplay">00:00:00</div>
             <div class="time-controls">
+                <div class="time-control-row">
+                    <span class="time-label">日</span>
+                    <button class="time-btn" data-unit="day" data-delta="-1">-</button>
+                    <span class="time-value" id="devDay">01</span>
+                    <button class="time-btn" data-unit="day" data-delta="1">+</button>
+                </div>
                 <div class="time-control-row">
                     <span class="time-label">时</span>
                     <button class="time-btn" data-unit="hour" data-delta="-1">-</button>
@@ -96,21 +103,21 @@
                 <button class="checkin-btn primary" id="submitCheckInBtn" onclick="submitCheckIn()">提交打卡</button>
             </div>
 
-            <!-- image: Photo upload -->
+            <!-- image: Photo upload - Redesigned for better UX -->
             <div id="imageInput" class="input-section" style="display: none;">
-                <div class="preview-zone" id="imagePreviewZone">
-                    <img id="imagePreview" style="display: none;" alt="Image preview" />
-                    <div class="placeholder" id="imagePlaceholder">
+                <div class="image-upload-zone" id="imageUploadZone" onclick="document.getElementById('imageFileInput').click()">
+                    <div class="upload-placeholder" id="imagePlaceholder">
                         <svg class="upload-icon" viewBox="0 0 56 56">
-                            <rect x="4" y="4" width="48" height="48" rx="12" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4"/>
-                            <path d="M28 20V36M20 28H36" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                            <rect x="4" y="4" width="48" height="48" rx="12" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4" fill="none"/>
+                            <path d="M28 18V38M18 28H38" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
                         </svg>
-                        <p>点击拍照</p>
+                        <p class="upload-text">点击拍照或选择图片</p>
+                        <p class="upload-hint">支持多张照片</p>
                     </div>
+                    <div class="image-preview-grid" id="imagePreviewGrid" style="display: none;"></div>
                 </div>
-                <input type="file" id="imageFileInput" accept="image/*" capture="environment" style="display: none;">
-                <button class="checkin-btn secondary" onclick="document.getElementById('imageFileInput').click()">📷 拍照打卡</button>
-                <button class="checkin-btn primary" id="submitImageBtn" style="display: none;" onclick="submitCheckIn()">提交打卡</button>
+                <input type="file" id="imageFileInput" accept="image/*" capture="environment" multiple style="display: none;">
+                <button class="checkin-btn primary" id="submitImageBtn" disabled onclick="submitCheckIn()">✓ 提交打卡</button>
             </div>
 
             <!-- voice: Audio recording -->

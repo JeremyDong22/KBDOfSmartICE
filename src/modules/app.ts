@@ -1,4 +1,4 @@
-// Version: 5.1 - Integrated TimeControlModule for dev time simulation
+// Version: 5.3 - Pass dev time to getRestaurantsWithStatus for cross-day testing
 // App Module - Main application coordination and initialization
 // Handles: Application initialization, time slot detection, state management, coordination between modules
 
@@ -143,7 +143,9 @@ export class AppModule {
         console.log('[APP] Outside window, fetching previous slot:', slotForFetch, '(display mode)');
       }
 
-      this.allRestaurants = await KBDService.getRestaurantsWithStatus(slotForFetch, displayMode);
+      // Use dev time if available for cross-day testing
+      const devTime = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : null;
+      this.allRestaurants = await KBDService.getRestaurantsWithStatus(slotForFetch, displayMode, devTime);
 
       console.log('[APP] Loaded restaurants:', this.allRestaurants.length);
       console.log('[APP] Restaurant details:', this.allRestaurants.map(r => ({
@@ -212,12 +214,15 @@ export class AppModule {
   static async updateUIBasedOnTimeWindow(): Promise<void> {
     console.log('[APP] Updating UI based on time window, in window:', this.isInTimeWindow);
 
+    // Use dev time if available for cross-day testing
+    const devTime = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : null;
+
     if (!this.isInTimeWindow) {
       console.log('[APP] Outside time window - showing previous slot data in display mode');
 
       // Fetch previous slot data in display mode
       const previousSlot = KBDService.getPreviousTimeSlot();
-      this.allRestaurants = await KBDService.getRestaurantsWithStatus(previousSlot, true);
+      this.allRestaurants = await KBDService.getRestaurantsWithStatus(previousSlot, true, devTime);
 
       MapModule.setBlur(false);
       UIModule.hideCheckInPanel();
@@ -232,7 +237,7 @@ export class AppModule {
       console.log('[APP] Inside time window - reloading data for slot:', this.currentSlotType);
 
       // Reload data for new slot in normal mode
-      this.allRestaurants = await KBDService.getRestaurantsWithStatus(this.currentSlotType!, false);
+      this.allRestaurants = await KBDService.getRestaurantsWithStatus(this.currentSlotType!, false, devTime);
 
       // Load task for current slot
       await this.loadCurrentTask();
@@ -270,7 +275,13 @@ export class AppModule {
     console.log('[APP] Loading current task for restaurant:', this.currentUser.restaurant_id, 'slot:', this.currentSlotType);
 
     try {
-      this.currentTask = await KBDService.getTodayTask(this.currentUser.restaurant_id, this.currentSlotType!);
+      // Use dev time if available for cross-day testing
+      const devTime = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : null;
+      if (devTime) {
+        console.log('[APP] Using dev time for task selection:', devTime.toISOString());
+      }
+
+      this.currentTask = await KBDService.getTodayTask(this.currentUser.restaurant_id, this.currentSlotType!, devTime);
 
       if (this.currentTask) {
         console.log('[APP] Task loaded:', this.currentTask.task_name);
