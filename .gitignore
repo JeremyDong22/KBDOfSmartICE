@@ -26,3 +26,6 @@ yarn-error.log*
 # Temporary files
 *.tmp
 .cache/
+
+# Profile assets (uploaded to Supabase Storage)
+profile/
