@@ -1,4 +1,4 @@
-// Version: 6.5 - Added night mode map theme (auto-activates after 18:00)
+// Version: 6.7 - Dynamic thumbnail sizing + smooth preview animations with loading spinner
 // Map Module - Leaflet.js map initialization and marker management
 // Philosophy: Rely on browser's built-in HTTP cache to minimize API requests
 // Handles: Map initialization, marker creation, marker updates, restaurant navigation, history panel, media preview, night theme
@@ -69,10 +69,27 @@ export class MapModule {
         </div>
       `;
     } else {
-      // Image: use img tag
+      // Image: use img tag with dynamic sizing on load
+      // Max dimensions for thumbnail (excluding padding)
+      const maxW = 120;
+      const maxH = 100;
+      const padding = 12; // 6px padding on each side
       return `
         <div class="avatar-thumbnail ${isVisible ? 'visible' : ''}" id="thumb-${restaurantId}">
-          <img src="${mediaUrl}" alt="">
+          <img src="${mediaUrl}" alt="" onload="
+            (function(img) {
+              var container = img.parentElement;
+              var naturalW = img.naturalWidth;
+              var naturalH = img.naturalHeight;
+              var maxW = ${maxW - padding};
+              var maxH = ${maxH - padding};
+              var ratio = Math.min(maxW / naturalW, maxH / naturalH);
+              var w = Math.round(naturalW * ratio) + ${padding};
+              var h = Math.round(naturalH * ratio) + ${padding};
+              container.style.width = w + 'px';
+              container.style.height = h + 'px';
+            })(this);
+          ">
         </div>
       `;
     }
@@ -1041,10 +1058,27 @@ export class MapModule {
       const isAudio = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'webm'].includes(ext);
 
       if (isImage) {
+        // Add loading spinner
+        const spinner = document.createElement('div');
+        spinner.className = 'media-loading-spinner';
+        item.appendChild(spinner);
+
         const img = document.createElement('img');
         img.src = url;
         img.alt = `Image ${index + 1}`;
         img.draggable = false;
+
+        // On load: remove spinner, show image
+        img.addEventListener('load', () => {
+          spinner.remove();
+          img.classList.add('loaded');
+        });
+
+        // On error: remove spinner, show error
+        img.addEventListener('error', () => {
+          spinner.remove();
+          item.innerHTML = '<div style="color: #999; padding: 40px;">加载失败</div>';
+        });
 
         // Long-press to download
         img.addEventListener('touchstart', (e) => {

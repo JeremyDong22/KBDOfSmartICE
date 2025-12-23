@@ -181,11 +181,13 @@ body {
     top: -100px;
     left: 50%;
     transform: translateX(-50%) scale(0);
+    /* Dynamic size set by JS, these are defaults */
     max-width: 120px;
     max-height: 100px;
     border-radius: 14px;
     background: white;
-    padding: 5px;
+    padding: 6px;
+    box-sizing: border-box;  /* Include padding in width/height */
     box-shadow: 0 8px 24px rgba(0,0,0,0.3);
     opacity: 0;
     transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -201,11 +203,9 @@ body {
 
 .avatar-thumbnail img {
     display: block;
-    max-width: 110px;
-    max-height: 90px;
-    width: auto;
-    height: auto;
-    object-fit: contain;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     border-radius: 9px;
     cursor: pointer;
 }
@@ -1241,6 +1241,19 @@ body.production .time-control-panel {
     align-items: center;
     justify-content: center;
     padding: 40px;
+    /* Fade in animation */
+    animation: overlayFadeIn 0.25s ease-out;
+}
+
+@keyframes overlayFadeIn {
+    from {
+        opacity: 0;
+        backdrop-filter: blur(0);
+    }
+    to {
+        opacity: 1;
+        backdrop-filter: blur(4px);
+    }
 }
 
 .media-preview-modal {
@@ -1254,6 +1267,51 @@ body.production .time-control-panel {
     display: flex;
     flex-direction: column;
     align-items: center;
+    /* Scale + fade in animation */
+    animation: modalPopIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalPopIn {
+    from {
+        opacity: 0;
+        transform: scale(0.85);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Loading spinner for images */
+.media-loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #e5e7eb;
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 60px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Image fade in after load */
+.media-preview-modal img {
+    max-width: 80vw;
+    max-height: 65vh;
+    object-fit: contain;
+    border-radius: 8px;
+    user-select: none;
+    -webkit-user-select: none;
+    /* Start hidden, fade in when loaded */
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.media-preview-modal img.loaded {
+    opacity: 1;
 }
 
 .media-preview-modal .close-btn {
@@ -1304,16 +1362,11 @@ body.production .time-control-panel {
     display: flex;
     align-items: center;
     justify-content: center;
+    min-height: 120px;  /* Minimum height for spinner */
+    position: relative;
 }
 
-.media-preview-modal img {
-    max-width: 80vw;
-    max-height: 65vh;
-    object-fit: contain;
-    border-radius: 8px;
-    user-select: none;
-    -webkit-user-select: none;
-}
+/* Styles moved to earlier .media-preview-modal img block */
 
 .media-preview-modal video {
     max-width: 80vw;
