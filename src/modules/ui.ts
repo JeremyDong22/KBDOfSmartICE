@@ -1,4 +1,4 @@
-// Version: 5.2 - Integrated with TimeControlModule for dev time support
+// Version: 5.3 - Fixed duplicate dot in status bar (removed ● from status strings)
 // UI Module - UI state management and animations
 // Handles: Panel visibility, status bar with business states, animations, restaurant navigation
 
@@ -49,27 +49,28 @@ export class UIModule {
     const dinnerCloseEnd = 24 * 60 + 60; // 01:00 next day (25:00)
 
     // Handle time windows
+    // Note: The ● dot is rendered by .status-dot element in HTML, not in the status string
     if (totalMinutes >= lunchOpenStart && totalMinutes < lunchOpenEnd) {
-      return { status: '● 午市开店', dotColor: 'green' };
+      return { status: '午市开店', dotColor: 'green' };
     } else if (totalMinutes >= lunchOpenEnd && totalMinutes < lunchBusinessEnd) {
       return { status: '营业中', dotColor: 'green' };
     } else if (totalMinutes >= lunchBusinessEnd && totalMinutes < lunchCloseEnd) {
-      return { status: '● 午市闭店', dotColor: 'green' };
+      return { status: '午市闭店', dotColor: 'green' };
     } else if (totalMinutes >= lunchCloseEnd && totalMinutes < transitionEnd) {
       return { status: '营业中', dotColor: 'green' };
     } else if (totalMinutes >= transitionEnd && totalMinutes < dinnerOpenEnd) {
-      return { status: '● 晚市开店', dotColor: 'green' };
+      return { status: '晚市开店', dotColor: 'green' };
     } else if (totalMinutes >= dinnerOpenEnd && totalMinutes < dinnerBusinessEnd) {
       return { status: '营业中', dotColor: 'green' };
     } else if (totalMinutes >= dinnerBusinessEnd && totalMinutes < dinnerCloseEnd) {
-      return { status: '● 晚市闭店', dotColor: 'green' };
+      return { status: '晚市闭店', dotColor: 'green' };
     } else {
       // 01:00-10:00 or after 01:00 (handle next day)
       if (totalMinutes >= 60 && totalMinutes < lunchOpenStart) {
         return { status: '休息中', dotColor: 'gray' };
       } else if (totalMinutes < 60) {
         // 00:00-01:00 is still dinner_close window
-        return { status: '● 晚市闭店', dotColor: 'green' };
+        return { status: '晚市闭店', dotColor: 'green' };
       } else {
         return { status: '休息中', dotColor: 'gray' };
       }
