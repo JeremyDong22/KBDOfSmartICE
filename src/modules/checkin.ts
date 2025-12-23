@@ -1,4 +1,4 @@
-// Version: 7.1 - Added verbose logging for video upload debugging
+// Version: 7.2 - Added 10MB video size limit and better error messages for uploads
 // Check-in Module - Media recording and submission
 // Handles: Image upload (multiple), voice recording, video upload (file picker), check-in submission
 
@@ -18,7 +18,7 @@ if (import.meta.env.DEV) {
 
 // Compression constants
 const IMAGE_MAX_SIZE_KB = 200;
-const VIDEO_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB in bytes
+const VIDEO_MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB limit for video (reasonable for mobile upload)
 
 export class CheckInModule {
   // State
@@ -345,6 +345,7 @@ export class CheckInModule {
   /**
    * Handle video file selection (from camera capture or gallery)
    * Supports native video formats: mp4, mov, quicktime
+   * Max size: 10MB (enforced for reasonable upload times)
    */
   static async handleVideoUpload(e: Event): Promise<void> {
     console.log('[Video] handleVideoUpload triggered');
@@ -370,11 +371,14 @@ export class CheckInModule {
       return;
     }
 
-    // Check file size (max 50MB as per constraints)
-    const maxSizeBytes = 50 * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
+    // Check file size - enforce 10MB limit for reasonable upload times
+    if (file.size > VIDEO_MAX_SIZE_BYTES) {
+      const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+      const maxMB = (VIDEO_MAX_SIZE_BYTES / 1024 / 1024).toFixed(0);
       console.log('[Video] File too large:', file.size);
-      alert(`视频文件过大，请选择小于 50MB 的视频`);
+      alert(`视频文件过大 (${sizeMB}MB)\n\n为确保上传成功，请选择小于 ${maxMB}MB 的视频。\n\n建议：\n1. 使用手机相机的"较低质量"设置录制\n2. 控制视频时长在 30 秒以内\n3. 或使用视频压缩工具`);
+      // Clear the input
+      input.value = '';
       return;
     }
 
@@ -609,7 +613,13 @@ export class CheckInModule {
       MapModule.setBlur(true);
       UIModule.showCheckInPanel();
 
-      alert(`打卡失败: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Provide user-friendly error messages
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      if (errorMessage.includes('timeout') || errorMessage.includes('超时')) {
+        alert(`上传超时\n\n可能原因：\n1. 网络连接不稳定\n2. 文件过大（视频建议 < 10MB）\n3. 服务器响应慢\n\n建议：\n• 切换到更稳定的网络\n• 选择较小的视频文件\n• 稍后重试`);
+      } else {
+        alert(`打卡失败: ${errorMessage}`);
+      }
     }
   }
 

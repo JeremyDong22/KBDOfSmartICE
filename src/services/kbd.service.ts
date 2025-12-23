@@ -1,4 +1,4 @@
-// Version: 4.7 - Added verbose logging to uploadMedia for debugging
+// Version: 4.8 - Added timeout and better error handling for media uploads
 // KBD business logic service with type safety
 
 import { supabaseClient } from './supabase';
