@@ -1,4 +1,4 @@
-// Version: 1.0 - Supabase Realtime subscription service for check-in broadcasts
+// Version: 1.1 - Added detailed performance logging for debugging latency issues
 // Monitors kbd_check_in_record table INSERT events and notifies subscribers
 
 import { supabaseClient } from './supabase';
@@ -12,23 +12,6 @@ type CheckInCallback = (record: CheckInRecord) => void;
 
 /**
  * RealtimeService - Supabase Realtime subscription manager
- *
- * Subscribes to kbd_check_in_record table INSERT events and broadcasts
- * new check-ins to registered callbacks for real-time UI updates.
- *
- * Usage:
- * ```typescript
- * // Initialize once at app startup
- * await RealtimeService.init();
- *
- * // Register callback
- * const unsubscribe = RealtimeService.onNewCheckIn((record) => {
- *   console.log('New check-in:', record);
- * });
- *
- * // Cleanup when done
- * unsubscribe();
- * ```
  */
 export class RealtimeService {
   private static channel: RealtimeChannel | null = null;
@@ -37,15 +20,16 @@ export class RealtimeService {
 
   /**
    * Initialize and start subscribing to kbd_check_in_record INSERT events
-   *
-   * Safe to call multiple times - will skip if already initialized.
-   * Automatically updates IndexedDB cache and notifies all registered callbacks.
    */
   static async init(): Promise<void> {
     if (this.channel) {
+      // eslint-disable-next-line no-console
+      console.log('[RealtimeService] Already initialized, skipping...');
       return;
     }
 
+    // eslint-disable-next-line no-console
+    console.log('[RealtimeService] Initializing subscription...');
 
     this.channel = supabaseClient
       .channel('kbd-check-ins')
@@ -54,23 +38,103 @@ export class RealtimeService {
         schema: 'public',
         table: 'kbd_check_in_record'
       }, (payload) => {
+        const receiveTime = performance.now();
+        const receiveDate = new Date();
+        const localTime = receiveDate.toLocaleTimeString('zh-CN', { hour12: false }) + '.' + receiveDate.getMilliseconds().toString().padStart(3, '0');
+
+        // eslint-disable-next-line no-console
+        console.log(`[RealtimeService] ⏱️ ${localTime} | 📥 RECEIVED`, {
+          eventType: payload.eventType,
+          table: payload.table,
+          commit_timestamp: payload.commit_timestamp
+        });
+
         const newRecord = payload.new as CheckInRecord;
 
-        // Notify all registered callbacks
-        this.callbacks.forEach(cb => {
+        // Calculate server -> client latency
+        if (payload.commit_timestamp) {
+          const serverTime = new Date(payload.commit_timestamp);
+          const latencyMs = receiveDate.getTime() - serverTime.getTime();
+          // eslint-disable-next-line no-console
+          console.log(`[RealtimeService] ⏱️ ${localTime} | 📊 LATENCY`, {
+            server_time: payload.commit_timestamp,
+            client_time: receiveDate.toISOString(),
+            latency_ms: latencyMs,
+            latency_display: latencyMs > 1000 ? `${(latencyMs/1000).toFixed(1)}s` : `${latencyMs}ms`
+          });
+        }
+
+        // Log record details
+        // eslint-disable-next-line no-console
+        console.log(`[RealtimeService] ⏱️ ${localTime} | 📋 RECORD`, {
+          id: newRecord.id,
+          restaurant_id: newRecord.restaurant_id,
+          employee_id: newRecord.employee_id,
+          slot_type: newRecord.slot_type,
+          check_in_at: newRecord.check_in_at,
+          created_at: newRecord.created_at
+        });
+
+        // Calculate DB insert -> client receive latency
+        if (newRecord.created_at) {
+          const dbInsertTime = new Date(newRecord.created_at);
+          const dbToClientMs = receiveDate.getTime() - dbInsertTime.getTime();
+          // eslint-disable-next-line no-console
+          console.log(`[RealtimeService] ⏱️ ${localTime} | 📊 DB->CLIENT`, {
+            db_created_at: newRecord.created_at,
+            total_latency_ms: dbToClientMs,
+            total_latency_display: dbToClientMs > 1000 ? `${(dbToClientMs/1000).toFixed(1)}s` : `${dbToClientMs}ms`
+          });
+        }
+
+        // Notify all registered callbacks with timing
+        const callbackStart = performance.now();
+        let callbackCount = 0;
+
+        this.callbacks.forEach((cb) => {
+          const cbStart = performance.now();
           try {
             cb(newRecord);
+            const cbDuration = performance.now() - cbStart;
+            // eslint-disable-next-line no-console
+            console.log(`[RealtimeService] ⏱️ ${localTime} | ✅ CALLBACK #${callbackCount + 1}`, { duration_ms: cbDuration.toFixed(2) });
           } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('[RealtimeService] Callback execution error:', err);
           }
+          callbackCount++;
         });
+
+        const totalCallbackTime = performance.now() - callbackStart;
+        const totalProcessTime = performance.now() - receiveTime;
+
+        // eslint-disable-next-line no-console
+        console.log(`[RealtimeService] ⏱️ ${localTime} | 📊 COMPLETE`, {
+          callbacks_executed: callbackCount,
+          callback_total_ms: totalCallbackTime.toFixed(2),
+          total_process_ms: totalProcessTime.toFixed(2)
+        });
+
+        // eslint-disable-next-line no-console
+        console.log('─'.repeat(60));
       })
       .subscribe((status) => {
+        // eslint-disable-next-line no-console
+        console.log('[RealtimeService] Subscription status:', status);
         this._isConnected = status === 'SUBSCRIBED';
 
         if (status === 'SUBSCRIBED') {
+          // eslint-disable-next-line no-console
+          console.log('[RealtimeService] ✅ Successfully subscribed to real-time updates');
         } else if (status === 'CHANNEL_ERROR') {
+          // eslint-disable-next-line no-console
+          console.error('[RealtimeService] ❌ Channel error occurred');
         } else if (status === 'TIMED_OUT') {
+          // eslint-disable-next-line no-console
+          console.error('[RealtimeService] ❌ Subscription timed out');
         } else if (status === 'CLOSED') {
+          // eslint-disable-next-line no-console
+          console.log('[RealtimeService] Channel closed');
           this._isConnected = false;
         }
       });
@@ -78,56 +142,44 @@ export class RealtimeService {
 
   /**
    * Register a callback for new check-in events
-   *
-   * @param callback - Function to call when a new check-in is received
-   * @returns Unsubscribe function to remove this callback
-   *
-   * @example
-   * ```typescript
-   * const unsubscribe = RealtimeService.onNewCheckIn((record) => {
-   *   MapModule.updateAvatar(record.employee_id);
-   * });
-   *
-   * // Later, when no longer needed
-   * unsubscribe();
-   * ```
    */
   static onNewCheckIn(callback: CheckInCallback): () => void {
     this.callbacks.add(callback);
+    // eslint-disable-next-line no-console
+    console.log('[RealtimeService] Callback registered, total callbacks:', this.callbacks.size);
 
-    // Return unsubscribe function
     return () => {
       this.callbacks.delete(callback);
+      // eslint-disable-next-line no-console
+      console.log('[RealtimeService] Callback removed, remaining callbacks:', this.callbacks.size);
     };
   }
 
   /**
    * Stop subscription and clean up all resources
-   *
-   * Removes the Supabase channel, clears all callbacks, and resets connection state.
-   * Safe to call multiple times.
    */
   static stop(): void {
     if (this.channel) {
+      // eslint-disable-next-line no-console
+      console.log('[RealtimeService] Stopping subscription...');
       supabaseClient.removeChannel(this.channel);
       this.channel = null;
       this._isConnected = false;
       this.callbacks.clear();
-    } else {
+      // eslint-disable-next-line no-console
+      console.log('[RealtimeService] Subscription stopped and cleaned up');
     }
   }
 
   /**
    * Get current connection status
-   *
-   * @returns true if subscribed to Realtime channel, false otherwise
    */
   static isConnected(): boolean {
     return this._isConnected;
   }
 }
 
-// Expose to window for backward compatibility with HTML onclick handlers and debugging
+// Expose to window for debugging
 if (typeof window !== 'undefined') {
   window.RealtimeService = RealtimeService;
 }

@@ -421,19 +421,53 @@ export class AppModule {
    * @param record - Check-in record received via Realtime
    */
   private static handleNewCheckIn(record: CheckInRecord): void {
-    // Find and update restaurant in local state
+    const startTime = performance.now();
+    // eslint-disable-next-line no-console
+    console.log('[APP] 🔔 handleNewCheckIn START', {
+      restaurant_id: record.restaurant_id,
+      employee_id: record.employee_id
+    });
+
+    // Find restaurant in local state
+    const findStart = performance.now();
     const restaurant = this.allRestaurants.find(r => r.id === record.restaurant_id);
+    const findDuration = performance.now() - findStart;
+    // eslint-disable-next-line no-console
+    console.log(`[APP] ⏱️ Restaurant lookup: ${findDuration.toFixed(2)}ms`, {
+      found: !!restaurant,
+      restaurant_name: restaurant?.restaurant_name
+    });
+
     if (restaurant) {
+      // Update local state
+      const updateStart = performance.now();
       restaurant.checked = true;
       restaurant.checkInData = record;
+      // eslint-disable-next-line no-console
+      console.log(`[APP] ⏱️ State update: ${(performance.now() - updateStart).toFixed(2)}ms`);
 
-      // Update all map markers (includes the updated restaurant)
+      // Update all map markers
+      const markerStart = performance.now();
       MapModule.updateAllMarkers(this.allRestaurants);
+      // eslint-disable-next-line no-console
+      console.log(`[APP] ⏱️ Map markers update: ${(performance.now() - markerStart).toFixed(2)}ms`);
 
       // Update edge indicators
+      const edgeStart = performance.now();
       EdgeIndicatorsModule.updateRestaurantData(this.allRestaurants);
+      // eslint-disable-next-line no-console
+      console.log(`[APP] ⏱️ Edge indicators update: ${(performance.now() - edgeStart).toFixed(2)}ms`);
 
+      // eslint-disable-next-line no-console
+      console.log('[APP] ✅ Updated restaurant status from Realtime:', restaurant.restaurant_name);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn('[APP] ⚠️ Restaurant not found in local state:', record.restaurant_id);
     }
+
+    const totalDuration = performance.now() - startTime;
+    // eslint-disable-next-line no-console
+    console.log(`[APP] 🔔 handleNewCheckIn COMPLETE: ${totalDuration.toFixed(2)}ms`);
   }
 
   /**
