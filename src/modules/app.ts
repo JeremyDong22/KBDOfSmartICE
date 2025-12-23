@@ -1,16 +1,20 @@
-// Version: 5.3 - Pass dev time to getRestaurantsWithStatus for cross-day testing
+// Version: 6.6 - Use brand_id from sessionStorage (fetched at login) to eliminate 1.7s query
 // App Module - Main application coordination and initialization
 // Handles: Application initialization, time slot detection, state management, coordination between modules
 
 import { supabaseClient } from '@services/supabase';
 import { AuthService } from '@services/auth.service';
 import { KBDService } from '@services/kbd.service';
+import { CacheService } from '@services/cache.service';
+import { RealtimeService } from '@services/realtime.service';
+import { AvatarCacheService } from '@services/avatar-cache.service';
 import { EdgeIndicatorsModule } from '@modules/edge-indicators';
 import { MapModule } from '@modules/map';
 import { CheckInModule } from '@modules/checkin';
 import { UIModule } from '@modules/ui';
 import { TimeControlModule } from '@modules/time-control';
-import type { Employee, Restaurant, Task, SlotType } from '@/types/models';
+import { TimeScheduler } from '@modules/time-scheduler';
+import type { Employee, Restaurant, Task, SlotType, TimeSlotConfig, CheckInRecord } from '@/types/models';
 
 console.log('[APP] Module loaded');
 
@@ -23,14 +27,22 @@ export class AppModule {
   static isInTimeWindow: boolean = false;
   static testMode: boolean = false;
   static testSlotType: SlotType | null = null;
+  // Cached brand_id to avoid redundant API calls
+  private static cachedBrandId: number | null = null;
 
   /**
    * Initialize application
    */
   static async init(): Promise<void> {
+    const initStart = performance.now();
     console.log('[APP] ===== Application initialization started =====');
 
-    // Check authentication
+    // 1. Initialize cache service (must be first)
+    const cacheStart = performance.now();
+    await CacheService.init();
+    console.log(`[APP] ⏱️ CacheService initialized in ${(performance.now() - cacheStart).toFixed(0)}ms`);
+
+    // 2. Check authentication
     this.currentUser = AuthService.getCurrentUser();
 
     if (!this.currentUser) {
@@ -42,30 +54,99 @@ export class AppModule {
     console.log('[APP] Current user:', this.currentUser.employee_name);
     console.log('[APP] Restaurant ID:', this.currentUser.restaurant_id);
 
-    // Initialize check-in module
+    // 3. Initialize check-in module
     CheckInModule.initialize();
 
-    // Detect current time slot
-    await this.detectTimeSlot();
+    // 4. Load time configuration (cache-first)
+    const timeConfigStart = performance.now();
+    const timeConfig = await this.loadTimeSlotConfig();
+    console.log(`[APP] ⏱️ Time config loaded in ${(performance.now() - timeConfigStart).toFixed(0)}ms`);
 
-    // Load data and initialize map
+    // 5. Initialize time scheduler (replaces 60-second polling)
+    TimeScheduler.init(timeConfig);
+    TimeScheduler.onSlotChange((newSlot, prevSlot) => {
+      console.log('[APP] TimeScheduler: slot changed', prevSlot, '->', newSlot);
+      this.handleTimeWindowChange();
+    });
+    TimeScheduler.onPreload((upcomingSlot) => {
+      console.log('[APP] TimeScheduler: preloading task for', upcomingSlot);
+      this.preloadTaskForSlot(upcomingSlot);
+    });
+
+    // 6. Detect current time window
+    this.currentSlotType = TimeScheduler.getCurrentSlot();
+    this.isInTimeWindow = TimeScheduler.isInTimeWindow();
+    console.log('[APP] Current slot:', this.currentSlotType, 'in window:', this.isInTimeWindow);
+
+    // 7. Load restaurants and initialize map
+    const mapStart = performance.now();
     await this.loadRestaurantsAndInitMap();
+    console.log(`[APP] ⏱️ Restaurants & map loaded in ${(performance.now() - mapStart).toFixed(0)}ms`);
 
-    // Set up UI event listeners
+    // 8. Set up UI event listeners
     UIModule.setupLogoutButton();
     this.setupRecenterButton();
 
-    // Initialize time control module (dev only)
+    // 9. Initialize time control module (dev mode)
     TimeControlModule.initialize(() => this.handleTimeWindowChange());
 
-    // Set up periodic time slot checking (every minute)
-    setInterval(async () => {
-      console.log('[APP] Periodic time slot check');
-      await this.detectTimeSlot();
-      await this.updateUIBasedOnTimeWindow();
-    }, 60000); // Check every 60 seconds
+    // 10. Start Realtime subscription
+    const realtimeStart = performance.now();
+    await RealtimeService.init();
+    console.log(`[APP] ⏱️ Realtime initialized in ${(performance.now() - realtimeStart).toFixed(0)}ms`);
+    RealtimeService.onNewCheckIn((record) => {
+      console.log('[APP] Realtime: new check-in received', record.restaurant_id);
+      this.handleNewCheckIn(record);
+    });
 
-    console.log('[APP] ===== Application initialization complete =====');
+    // 11. Background tasks (non-blocking)
+    this.backgroundInit();
+
+    const totalTime = performance.now() - initStart;
+    console.log(`[APP] ===== Application initialization complete in ${totalTime.toFixed(0)}ms =====`);
+  }
+
+  /**
+   * Get user's brand_id (from session first, then cache, then DB as fallback)
+   * Also syncs cache with KBDService
+   */
+  private static async getBrandId(): Promise<number> {
+    // 1. Check if brand_id is already cached in memory
+    if (this.cachedBrandId !== null) {
+      console.log('[APP] brand_id memory cache HIT:', this.cachedBrandId);
+      return this.cachedBrandId;
+    }
+
+    // 2. Check if brand_id exists in sessionStorage (from login)
+    if (this.currentUser?.brand_id !== undefined) {
+      this.cachedBrandId = this.currentUser.brand_id;
+      console.log('[APP] brand_id session cache HIT:', this.cachedBrandId);
+      KBDService.setBrandIdCache(this.currentUser.restaurant_id, this.cachedBrandId);
+      return this.cachedBrandId;
+    }
+
+    // 3. Fallback: query database (only for old sessions without brand_id)
+    console.log('[APP] brand_id cache MISS (old session), querying DB...');
+    const queryStart = performance.now();
+    const { data: restaurant } = await supabaseClient
+      .from('master_restaurant')
+      .select('brand_id')
+      .eq('id', this.currentUser!.restaurant_id)
+      .single();
+    console.log(`[APP] ⏱️ brand_id DB query took ${(performance.now() - queryStart).toFixed(0)}ms`);
+
+    const restaurantData = restaurant as { brand_id: number } | null;
+    if (!restaurantData) {
+      throw new Error('Restaurant not found for user');
+    }
+
+    this.cachedBrandId = restaurantData.brand_id;
+    console.log('[APP] brand_id cached from DB:', this.cachedBrandId);
+
+    // Sync with KBDService to avoid duplicate queries
+    KBDService.setBrandIdCache(this.currentUser!.restaurant_id, this.cachedBrandId);
+
+    return this.cachedBrandId;
   }
 
   /**
@@ -83,20 +164,9 @@ export class AppModule {
         return;
       }
 
-      // Get user's restaurant to find brand_id
-      const { data: restaurant } = await supabaseClient
-        .from('master_restaurant')
-        .select('brand_id')
-        .eq('id', this.currentUser!.restaurant_id)
-        .single();
-
-      const restaurantData = restaurant as { brand_id: number } | null;
-      if (!restaurantData) {
-        console.error('[APP] Restaurant not found for user');
-        return;
-      }
-
-      console.log('[APP] User brand_id:', restaurantData.brand_id);
+      // Get user's brand_id (cached)
+      const brandId = await this.getBrandId();
+      console.log('[APP] User brand_id:', brandId);
 
       // Get current time slot, using dev time if available
       const devTime = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : null;
@@ -104,7 +174,7 @@ export class AppModule {
         console.log('[APP] Using dev time:', TimeControlModule.getFormattedTime());
       }
 
-      const detectedSlot = await KBDService.getCurrentTimeSlot(restaurantData.brand_id, devTime);
+      const detectedSlot = await KBDService.getCurrentTimeSlot(brandId, devTime);
 
       if (detectedSlot) {
         this.currentSlotType = detectedSlot;
@@ -160,6 +230,20 @@ export class AppModule {
       // Initialize map
       await MapModule.initialize(this.allRestaurants);
 
+      // Extract and cache employee data for avatar and other uses
+      // Only cache if data came fresh (KBDService handles restaurant+employee caching together)
+      const allEmployees = this.allRestaurants.flatMap(r => r.master_employee || []);
+      if (allEmployees.length > 0) {
+        // Check if employees cache needs update (employees are embedded in restaurants cache)
+        const cachedEmployees = await CacheService.getEmployees();
+        if (cachedEmployees.length === 0) {
+          console.log('[APP] Employees cache empty, storing', allEmployees.length, 'employees');
+          await CacheService.setEmployees(allEmployees);
+        } else {
+          console.log('[APP] Employees already cached (', cachedEmployees.length, 'items)');
+        }
+      }
+
       // Initialize edge indicators after map is ready
       const mapInstance = MapModule.getMap();
       if (mapInstance) {
@@ -176,11 +260,6 @@ export class AppModule {
       } else {
         console.log('[APP] Not in time window, skipping task load');
       }
-
-      // Preload tasks for all slots in background (non-blocking)
-      KBDService.preloadTasksForAllSlots(this.currentUser!.restaurant_id).catch(err => {
-        console.warn('[APP] Task preload failed (non-critical):', err);
-      });
 
       // Update UI
       UIModule.updateStatusBar(this.currentSlotType);
@@ -360,6 +439,94 @@ export class AppModule {
       });
       console.log('[APP] Recenter button listener attached');
     }
+  }
+
+  /**
+   * Load time slot configuration (cache-first)
+   * @returns Array of time slot configurations
+   */
+  private static async loadTimeSlotConfig(): Promise<TimeSlotConfig[]> {
+    // Get user's brand_id (cached)
+    const brandId = await this.getBrandId();
+
+    // Check cache first
+    const cached = await CacheService.getTimeSlotConfig(brandId);
+    if (cached) {
+      console.log('[APP] Using cached time slot config');
+      return cached;
+    }
+
+    // Cache miss - query database
+    console.log('[APP] Time slot config cache miss, querying database');
+    const { data: configs } = await supabaseClient
+      .from('kbd_time_slot_config')
+      .select('*')
+      .eq('brand_id', brandId)
+      .is('restaurant_id', null)
+      .eq('is_active', true);
+
+    const configList = (configs || []) as TimeSlotConfig[];
+    await CacheService.setTimeSlotConfig(brandId, configList);
+    console.log('[APP] Time slot config cached');
+
+    return configList;
+  }
+
+  /**
+   * Preload task for upcoming slot (called 5 minutes before slot change)
+   * @param slotType - Upcoming slot type
+   */
+  private static async preloadTaskForSlot(slotType: SlotType): Promise<void> {
+    if (!this.currentUser?.restaurant_id) return;
+
+    try {
+      console.log('[APP] Preloading task for slot:', slotType);
+      await KBDService.getTodayTask(this.currentUser.restaurant_id, slotType);
+    } catch (error) {
+      console.warn('[APP] Task preload failed (non-critical):', error);
+    }
+  }
+
+  /**
+   * Handle new check-in from Realtime subscription
+   * @param record - Check-in record received via Realtime
+   */
+  private static handleNewCheckIn(record: CheckInRecord): void {
+    // Find and update restaurant in local state
+    const restaurant = this.allRestaurants.find(r => r.id === record.restaurant_id);
+    if (restaurant) {
+      restaurant.checked = true;
+      restaurant.checkInData = record;
+
+      // Update all map markers (includes the updated restaurant)
+      MapModule.updateAllMarkers(this.allRestaurants);
+
+      // Update edge indicators
+      EdgeIndicatorsModule.updateRestaurantData(this.allRestaurants);
+
+      console.log('[APP] Updated restaurant status from Realtime:', restaurant.restaurant_name);
+    }
+  }
+
+  /**
+   * Background initialization tasks (non-blocking)
+   */
+  private static backgroundInit(): void {
+    // Preload tasks for all slots
+    if (this.currentUser?.restaurant_id) {
+      KBDService.preloadTasksForAllSlots(this.currentUser.restaurant_id).catch(err => {
+        console.warn('[APP] Task preload failed (non-critical):', err);
+      });
+    }
+
+    // Check and update avatar cache
+    CacheService.getEmployees().then(employees => {
+      if (employees.length > 0) {
+        AvatarCacheService.checkAndUpdateAvatars(employees).catch(err => {
+          console.warn('[APP] Avatar update failed (non-critical):', err);
+        });
+      }
+    });
   }
 }
 

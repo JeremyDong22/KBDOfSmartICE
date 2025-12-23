@@ -36,6 +36,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: true,  // 允许局域网访问
     open: '/',
   },
 });

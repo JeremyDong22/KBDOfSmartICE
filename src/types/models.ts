@@ -1,4 +1,4 @@
-// Version: 1.0 - Business model type definitions
+// Version: 1.1 - Added brand_id to Employee for login-time caching
 // Core type definitions for KBD system
 
 export type SlotType = 'lunch_open' | 'lunch_close' | 'dinner_open' | 'dinner_close';
@@ -33,6 +33,7 @@ export interface Employee {
   is_locked: boolean;
   login_failed_count: number;
   profile_photo_url: string | null;
+  brand_id?: number; // Cached from master_restaurant at login
   created_at?: string;
   updated_at?: string;
 }

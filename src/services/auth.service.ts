@@ -1,4 +1,4 @@
-// Version: 3.0 - TypeScript migration of AuthService
+// Version: 3.3 - Two-query approach for reliable brand_id fetch at login
 // Authentication service with type safety
 
 import { supabaseClient } from './supabase';
@@ -10,11 +10,12 @@ export class AuthService {
   /**
    * Login with username and password
    * Uses custom authentication via master_employee table (not Supabase Auth SDK)
+   * Fetches brand_id from master_restaurant to cache it for faster page loads
    */
   static async login(username: string, password: string): Promise<LoginResponse> {
     try {
-      // Query master_employee table for authentication
-      const { data, error } = await supabaseClient
+      // 1. Query master_employee for authentication
+      const { data: empData, error: empError } = await supabaseClient
         .from('master_employee')
         .select('*')
         .eq('username', username)
@@ -22,20 +23,50 @@ export class AuthService {
         .eq('is_active', true)
         .single();
 
-      if (error) throw error;
-      if (!data) throw new Error('用户名或密码错误');
+      if (empError) throw empError;
+      if (!empData) throw new Error('用户名或密码错误');
 
-      const employee = data as unknown as Employee;
+      const rawEmployee = empData as any;
 
       // Check if account is locked
-      if (employee.is_locked) {
+      if (rawEmployee.is_locked) {
         throw new Error('账号已被锁定，请联系管理员');
       }
+
+      // 2. Fetch brand_id from master_restaurant (parallel-safe for future)
+      let brandId: number | undefined;
+      try {
+        const { data: restData } = await supabaseClient
+          .from('master_restaurant')
+          .select('brand_id')
+          .eq('id', rawEmployee.restaurant_id)
+          .single();
+        brandId = (restData as any)?.brand_id;
+      } catch {
+        console.warn('[AuthService] Could not fetch brand_id, will query on page load');
+      }
+
+      // Build employee object with brand_id
+      const employee: Employee = {
+        id: rawEmployee.id,
+        username: rawEmployee.username,
+        password_hash: rawEmployee.password_hash,
+        employee_name: rawEmployee.employee_name,
+        restaurant_id: rawEmployee.restaurant_id,
+        role_code: rawEmployee.role_code,
+        is_active: rawEmployee.is_active,
+        is_locked: rawEmployee.is_locked,
+        login_failed_count: rawEmployee.login_failed_count,
+        profile_photo_url: rawEmployee.profile_photo_url,
+        brand_id: brandId, // Cache brand_id for faster page loads
+        created_at: rawEmployee.created_at,
+        updated_at: rawEmployee.updated_at
+      };
 
       // Store session in sessionStorage
       sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(employee));
 
-      console.log('[AuthService] Login successful:', employee.employee_name);
+      console.log('[AuthService] Login successful:', employee.employee_name, 'brand_id:', brandId);
       return { success: true, user: employee };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
