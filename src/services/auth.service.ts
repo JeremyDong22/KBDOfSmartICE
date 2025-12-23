@@ -43,7 +43,6 @@ export class AuthService {
           .single();
         brandId = (restData as any)?.brand_id;
       } catch {
-        console.warn('[AuthService] Could not fetch brand_id, will query on page load');
       }
 
       // Build employee object with brand_id
@@ -66,11 +65,9 @@ export class AuthService {
       // Store session in sessionStorage
       sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(employee));
 
-      console.log('[AuthService] Login successful:', employee.employee_name, 'brand_id:', brandId);
       return { success: true, user: employee };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[AuthService] Login error:', errorMessage);
       return { success: false, error: errorMessage };
     }
   }
@@ -86,7 +83,6 @@ export class AuthService {
       const user = JSON.parse(userStr) as Employee;
       return user;
     } catch (error) {
-      console.error('[AuthService] Error getting current user:', error);
       return null;
     }
   }
@@ -96,7 +92,6 @@ export class AuthService {
    */
   static logout(): void {
     sessionStorage.removeItem(this.STORAGE_KEY);
-    console.log('[AuthService] User logged out');
     window.location.href = '/';
   }
 

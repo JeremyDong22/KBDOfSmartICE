@@ -9,11 +9,9 @@ import './styles/login.css';
 // Import services
 import { AuthService } from '@services/auth.service';
 
-console.log('[LOGIN] Page loaded');
 
 // Check if already logged in
 if (AuthService.isAuthenticated()) {
-  console.log('[LOGIN] User already authenticated, redirecting to main');
   window.location.href = '/main.html';
 }
 
@@ -26,7 +24,6 @@ const initLogin = () => {
   const errorMessage = document.getElementById('errorMessage') as HTMLDivElement;
 
   if (!loginForm || !usernameInput || !passwordInput || !loginBtn || !errorMessage) {
-    console.error('[LOGIN] Required DOM elements not found');
     return;
   }
 
@@ -52,28 +49,23 @@ const initLogin = () => {
     errorMessage.classList.remove('show');
 
     try {
-      console.log('[LOGIN] Attempting login for user:', username);
       const result = await AuthService.login(username, password);
 
       if (result.success) {
-        console.log('[LOGIN] Login successful, redirecting to main');
         // Success - redirect to main page
         window.location.href = '/main.html';
       } else {
-        console.error('[LOGIN] Login failed:', result.error);
         showError(result.error || '登录失败，请检查用户名和密码');
         loginBtn.disabled = false;
         loginBtn.textContent = '登录';
       }
     } catch (error) {
-      console.error('[LOGIN] Login error:', error);
       showError('登录失败，请重试');
       loginBtn.disabled = false;
       loginBtn.textContent = '登录';
     }
   });
 
-  console.log('[LOGIN] Login form initialized');
 };
 
 // Initialize when DOM is ready

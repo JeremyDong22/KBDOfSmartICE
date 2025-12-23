@@ -8,7 +8,6 @@ import { TimeControlModule } from '@modules/time-control';
 import { MapModule } from '@modules/map';
 import { UIModule } from '@modules/ui';
 
-console.log('[CHECKIN] Module loaded');
 
 // Compression constants
 const IMAGE_MAX_SIZE_KB = 200;
@@ -76,7 +75,6 @@ export class CheckInModule {
 
                 blob = result;
                 const sizeKB = blob.size / 1024;
-                console.log(`[CHECKIN] Compressed to ${sizeKB.toFixed(1)}KB at quality ${quality.toFixed(2)}`);
 
                 if (sizeKB <= maxSizeKB || quality <= 0.1) {
                   // Done compressing
@@ -84,7 +82,6 @@ export class CheckInModule {
                     type: 'image/jpeg',
                     lastModified: Date.now()
                   });
-                  console.log(`[CHECKIN] Final size: ${(compressedFile.size / 1024).toFixed(1)}KB`);
                   resolve(compressedFile);
                 } else {
                   // Reduce quality and try again
@@ -123,13 +120,11 @@ export class CheckInModule {
    * Initialize check-in module event listeners
    */
   static initialize(): void {
-    console.log('[CHECKIN] Initializing check-in module');
 
     // Image upload handler - correct element ID
     const imageFileInput = document.getElementById('imageFileInput') as HTMLInputElement;
     if (imageFileInput) {
       imageFileInput.addEventListener('change', (e) => this.handleImageUpload(e));
-      console.log('[CHECKIN] Image file input listener attached');
     }
 
     // Text input handler - element ID is textContent in HTML
@@ -143,7 +138,6 @@ export class CheckInModule {
       });
     }
 
-    console.log('[CHECKIN] Check-in module initialized');
   }
 
   /**
@@ -166,17 +160,14 @@ export class CheckInModule {
         const file = files[i];
         if (file) {
           try {
-            console.log(`[CHECKIN] Original image size: ${(file.size / 1024).toFixed(1)}KB`);
             const compressedFile = await this.compressImage(file);
             this.currentMediaFiles.push(compressedFile);
           } catch (error) {
-            console.error('[CHECKIN] Image compression failed:', error);
             // Fallback to original file if compression fails
             this.currentMediaFiles.push(file);
           }
         }
       }
-      console.log('[CHECKIN] Images selected:', this.currentMediaFiles.length);
 
       // Update preview grid
       this.updateImagePreviewGrid();
@@ -250,7 +241,6 @@ export class CheckInModule {
    */
   static removeImage(index: number): void {
     this.currentMediaFiles.splice(index, 1);
-    console.log('[CHECKIN] Image removed, remaining:', this.currentMediaFiles.length);
 
     if (this.currentMediaFiles.length === 0) {
       // Show placeholder again
@@ -272,7 +262,6 @@ export class CheckInModule {
    */
   static async startRecording(event: Event): Promise<void> {
     event.preventDefault();
-    console.log('[CHECKIN] Starting voice recording');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -302,7 +291,6 @@ export class CheckInModule {
           submitBtn.style.display = 'block';
         }
 
-        console.log('[CHECKIN] Voice recording saved');
       };
 
       this.mediaRecorder.start();
@@ -314,9 +302,7 @@ export class CheckInModule {
       if (startBtn) startBtn.style.display = 'none';
       if (stopBtn) stopBtn.style.display = 'inline-block';
 
-      console.log('[CHECKIN] Voice recording started');
     } catch (error) {
-      console.error('[CHECKIN] Error starting voice recording:', error);
       alert('无法访问麦克风，请检查权限设置');
     }
   }
@@ -326,7 +312,6 @@ export class CheckInModule {
    */
   static stopRecording(event: Event): void {
     event.preventDefault();
-    console.log('[CHECKIN] Stopping voice recording');
 
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.mediaRecorder.stop();
@@ -341,7 +326,6 @@ export class CheckInModule {
       if (startBtn) startBtn.style.display = 'inline-block';
       if (stopBtn) stopBtn.style.display = 'none';
 
-      console.log('[CHECKIN] Voice recording stopped');
     }
   }
 
@@ -350,7 +334,6 @@ export class CheckInModule {
    * Monitors size during recording and auto-stops when limit reached
    */
   static async toggleVideoRecording(): Promise<void> {
-    console.log('[CHECKIN] Toggling video recording');
 
     if (!this.isVideoRecording) {
       // Start recording
@@ -392,7 +375,6 @@ export class CheckInModule {
         try {
           this.mediaRecorder = new MediaRecorder(stream, options);
         } catch {
-          console.warn('[CHECKIN] Low bitrate codec not supported, using default');
           this.mediaRecorder = new MediaRecorder(stream);
         }
 
@@ -401,11 +383,9 @@ export class CheckInModule {
             this.videoChunks.push(e.data);
             this.videoCurrentSize += e.data.size;
             const sizeMB = this.videoCurrentSize / (1024 * 1024);
-            console.log(`[CHECKIN] Video recording: ${sizeMB.toFixed(2)}MB`);
 
             // Auto-stop when approaching 2MB limit (with 100KB buffer)
             if (this.videoCurrentSize >= VIDEO_MAX_SIZE_BYTES - 100000) {
-              console.log('[CHECKIN] Auto-stopping: 2MB limit reached');
               this.stopVideoRecording();
             }
           }
@@ -414,7 +394,6 @@ export class CheckInModule {
         this.mediaRecorder.onstop = async () => {
           const videoBlob = new Blob(this.videoChunks, { type: 'video/webm' });
           const sizeMB = videoBlob.size / (1024 * 1024);
-          console.log(`[CHECKIN] Final video size: ${sizeMB.toFixed(2)}MB`);
 
           const videoFile = new File([videoBlob], `video_${Date.now()}.webm`, { type: 'video/webm' });
           this.currentMediaFiles = [videoFile];
@@ -433,7 +412,6 @@ export class CheckInModule {
             submitBtn.style.display = 'block';
           }
 
-          console.log('[CHECKIN] Video recording saved');
         };
 
         // Request data every 500ms for size monitoring
@@ -446,9 +424,7 @@ export class CheckInModule {
           toggleBtn.textContent = '⏹️ 停止录制';
         }
 
-        console.log('[CHECKIN] Video recording started');
       } catch (error) {
-        console.error('[CHECKIN] Error starting video recording:', error);
         alert('无法访问摄像头，请检查权限设置');
       }
     } else {
@@ -477,7 +453,6 @@ export class CheckInModule {
       toggleBtn.textContent = '📹 开始录制';
     }
 
-    console.log('[CHECKIN] Video recording stopped');
   }
 
   /**
@@ -485,7 +460,6 @@ export class CheckInModule {
    * Immediately unblurs map and shows spinner on avatar, then uploads in background
    */
   static async submitCheckIn(): Promise<void> {
-    console.log('[CHECKIN] Submitting check-in');
 
     try {
       const currentUser = AuthService.getCurrentUser();
@@ -497,7 +471,6 @@ export class CheckInModule {
       // Get current task from AppModule
       const AppModule = window.AppModule;
       if (!AppModule) {
-        console.error('[CHECKIN] AppModule not found');
         return;
       }
 
@@ -540,13 +513,11 @@ export class CheckInModule {
       // Use dev time if available for cross-day testing
       const now = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : new Date();
       const today = now.toISOString().split('T')[0];
-      console.log('[CHECKIN] Check-in date:', today);
       let mediaUrls: string[] = [];
       let textContent: string | null = null;
 
       // Handle different media types
       if (currentTask.media_type === 'image') {
-        console.log('[CHECKIN] Uploading', this.currentMediaFiles.length, 'images...');
 
         // Upload all images
         for (const file of this.currentMediaFiles) {
@@ -557,10 +528,8 @@ export class CheckInModule {
             currentUser.id
           );
           mediaUrls.push(url);
-          console.log('[CHECKIN] Image uploaded:', url);
         }
       } else if (currentTask.media_type === 'voice' || currentTask.media_type === 'video') {
-        console.log('[CHECKIN] Uploading media file...');
         const mediaFile = this.currentMediaFiles[0];
         if (mediaFile) {
           const url = await KBDService.uploadMedia(
@@ -570,7 +539,6 @@ export class CheckInModule {
             currentUser.id
           );
           mediaUrls.push(url);
-          console.log('[CHECKIN] Media uploaded:', url);
         }
       } else if (currentTask.media_type === 'text') {
         const textInputEl = document.getElementById('textContent') as HTMLTextAreaElement;
@@ -578,7 +546,6 @@ export class CheckInModule {
       }
 
       // Submit check-in record
-      console.log('[CHECKIN] Submitting check-in record...');
       const result = await KBDService.submitCheckIn({
         restaurant_id: currentUser.restaurant_id,
         employee_id: currentUser.id,
@@ -594,7 +561,6 @@ export class CheckInModule {
         throw new Error(result.error || 'Check-in failed');
       }
 
-      console.log('[CHECKIN] Check-in submitted successfully');
 
       // === UPLOAD COMPLETE ===
       // Reload restaurants to show updated status and thumbnail FIRST (while spinner still shows)
@@ -609,7 +575,6 @@ export class CheckInModule {
       // Reset check-in module
       this.reset();
     } catch (error) {
-      console.error('[CHECKIN] Check-in error:', error);
 
       // Hide spinner on error
       const currentUser = AuthService.getCurrentUser();
@@ -629,7 +594,6 @@ export class CheckInModule {
    * Reset check-in module state
    */
   static reset(): void {
-    console.log('[CHECKIN] Resetting check-in module');
 
     this.currentMediaFiles = [];
     this.mediaRecorder = null;
@@ -675,7 +639,6 @@ export class CheckInModule {
       submitCheckInBtn.textContent = '✓ 提交打卡';
     }
 
-    console.log('[CHECKIN] Check-in module reset complete');
   }
 }
 
@@ -686,5 +649,4 @@ if (typeof window !== 'undefined') {
   window.startRecording = (e: Event) => CheckInModule.startRecording(e);
   window.stopRecording = (e: Event) => CheckInModule.stopRecording(e);
   window.toggleVideoRecording = () => CheckInModule.toggleVideoRecording();
-  console.log('[CHECKIN] Module exported to window');
 }

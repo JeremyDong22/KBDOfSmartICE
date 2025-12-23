@@ -28,20 +28,17 @@ void MapModule;
 void CheckInModule;
 void UIModule;
 
-console.log('[MAIN] Main entry point loaded');
 
 /**
  * Initialize application
  */
 const initApp = async (): Promise<void> => {
-  console.log('[MAIN] Initializing application');
 
   // Wait for DOM if not ready
   if (document.readyState === 'loading') {
     await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
   }
 
-  console.log('[MAIN] DOM ready, starting app module');
 
   // Initialize app (will handle authentication check internally)
   await AppModule.init();
@@ -49,6 +46,5 @@ const initApp = async (): Promise<void> => {
 
 // Start app
 initApp().catch(error => {
-  console.error('[MAIN] Fatal error during initialization:', error);
   alert('应用初始化失败：' + (error instanceof Error ? error.message : 'Unknown error'));
 });

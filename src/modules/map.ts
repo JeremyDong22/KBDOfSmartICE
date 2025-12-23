@@ -9,7 +9,6 @@ import { AuthService } from '@services/auth.service';
 import { KBDService } from '@services/kbd.service';
 import type { Restaurant, CheckInRecord, Task } from '@/types/models';
 
-console.log('[MAP] Module loaded');
 
 export class MapModule {
   // State
@@ -100,24 +99,20 @@ export class MapModule {
   private static markCheckInAsRead(restaurantId: string, checkInDate: string, slotType: string): void {
     const key = this.getReadKey(restaurantId, checkInDate, slotType);
     localStorage.setItem(key, 'true');
-    console.log('[MAP] Marked check-in as read:', key);
   }
 
   /**
    * Initialize Leaflet map with OpenStreetMap tiles
    */
   static async initialize(restaurants: Restaurant[]): Promise<void> {
-    console.log('[MAP] Initializing Leaflet map with', restaurants.length, 'restaurants');
 
     if (restaurants.length === 0) {
-      console.error('[MAP] No restaurants to display');
       alert('没有找到门店数据');
       return;
     }
 
     // If map already exists, just update markers instead of re-initializing
     if (this.map) {
-      console.log('[MAP] Map already initialized, updating markers only');
       this.updateAllMarkers(restaurants);
       return;
     }
@@ -143,21 +138,17 @@ export class MapModule {
       centerLat = parseFloat(String(userRestaurant!.latitude));
       centerLng = parseFloat(String(userRestaurant!.longitude));
       initialZoom = 16;
-      console.log('[MAP] Centering on user restaurant:', userRestaurant!.restaurant_name);
     } else if (validRestaurants.length > 0) {
       centerLat = validRestaurants.reduce((sum, r) => sum + parseFloat(String(r.latitude)), 0) / validRestaurants.length;
       centerLng = validRestaurants.reduce((sum, r) => sum + parseFloat(String(r.longitude)), 0) / validRestaurants.length;
       initialZoom = 16;
-      console.log('[MAP] User restaurant not found or invalid coords, using average center of', validRestaurants.length, 'valid restaurants');
     } else {
       // Fallback to default coordinates if no valid restaurants
       centerLat = 31.47;
       centerLng = 104.73;
       initialZoom = 11;
-      console.log('[MAP] No valid restaurant coordinates, using default center');
     }
 
-    console.log('[MAP] Center coordinates:', { lat: centerLat, lng: centerLng, zoom: initialZoom });
 
     // Store initial view for recenter button
     this.initialView = {
@@ -192,7 +183,6 @@ export class MapModule {
     );
     gaodeTileLayer.addTo(this.map);
 
-    console.log('[MAP] Leaflet map created successfully');
 
     // Add markers
     restaurants.forEach((restaurant, index) => {
@@ -211,11 +201,9 @@ export class MapModule {
     const lat = parseFloat(String(restaurant.latitude));
     const lng = parseFloat(String(restaurant.longitude));
     if (isNaN(lat) || isNaN(lng) || restaurant.latitude == null || restaurant.longitude == null) {
-      console.log('[MAP] Skipping restaurant with invalid coordinates:', restaurant.restaurant_name);
       return;
     }
 
-    console.log('[MAP] Adding Leaflet marker for:', restaurant.restaurant_name);
 
     const currentUser = AuthService.getCurrentUser();
     const isChecked = restaurant.checked || false;
@@ -307,14 +295,12 @@ export class MapModule {
       }
     }, 100);
 
-    console.log('[MAP] Leaflet marker added successfully');
   }
 
   /**
    * Update all markers with new restaurant data
    */
   static updateAllMarkers(restaurants: Restaurant[]): void {
-    console.log('[MAP] Updating all markers with fresh data');
 
     const currentUser = AuthService.getCurrentUser();
 
@@ -434,7 +420,6 @@ export class MapModule {
       }
     });
 
-    console.log('[MAP] All markers updated successfully');
   }
 
   /**
@@ -445,10 +430,8 @@ export class MapModule {
     if (!mapElement) return;
 
     if (blurred) {
-      console.log('[MAP] Applying blur effect');
       mapElement.classList.add('blurred');
     } else {
-      console.log('[MAP] Removing blur effect');
       mapElement.classList.remove('blurred');
     }
   }
@@ -459,7 +442,6 @@ export class MapModule {
   static focusOnRestaurant(restaurantId: string): void {
     const marker = this.markers[restaurantId];
     if (marker && this.map) {
-      console.log('[MAP] Focusing on restaurant:', restaurantId);
       const latlng = marker.getLatLng();
       this.map.flyTo([latlng.lat, latlng.lng], 16, {
         duration: 0.4  // Fast animation (0.4 seconds)
@@ -473,7 +455,6 @@ export class MapModule {
         }
       }, 200);  // Reduced delay before pulse animation
     } else {
-      console.warn('[MAP] Restaurant marker not found:', restaurantId);
     }
   }
 
@@ -489,11 +470,9 @@ export class MapModule {
    */
   static recenterToInitialView(): void {
     if (!this.map || !this.initialView) {
-      console.warn('[MAP] Cannot recenter: map or initialView not available');
       return;
     }
 
-    console.log('[MAP] Recentering to initial view:', this.initialView);
     this.map.flyTo([this.initialView.lat, this.initialView.lng], this.initialView.zoom, {
       duration: 0.4  // Fast animation (0.4 seconds)
     });
@@ -520,7 +499,6 @@ export class MapModule {
     mapElement.classList.add(`theme-${theme}`);
     this.currentTheme = theme;
 
-    console.log('[MAP] Theme set to:', theme);
   }
 
   /**
@@ -554,7 +532,6 @@ export class MapModule {
 
     this.THEMES.forEach(t => mapElement.classList.remove(`theme-${t}`));
     this.currentTheme = null;
-    console.log('[MAP] Theme cleared');
   }
 
   /**
@@ -563,7 +540,6 @@ export class MapModule {
   static showAvatarSpinner(restaurantId: string): void {
     const marker = this.markers[restaurantId];
     if (!marker) {
-      console.warn('[MAP] Cannot show spinner: marker not found for', restaurantId);
       return;
     }
 
@@ -581,7 +557,6 @@ export class MapModule {
     spinner.className = 'avatar-spinner';
     avatarMarker.insertBefore(spinner, avatarMarker.firstChild);
 
-    console.log('[MAP] Avatar spinner shown for:', restaurantId);
   }
 
   /**
@@ -597,7 +572,6 @@ export class MapModule {
     const spinner = markerElement.querySelector('.avatar-spinner');
     if (spinner) {
       spinner.remove();
-      console.log('[MAP] Avatar spinner hidden for:', restaurantId);
     }
   }
 
@@ -605,7 +579,6 @@ export class MapModule {
    * Show restaurant check-in history panel with lazy loading
    */
   static async showRestaurantHistory(restaurant: Restaurant): Promise<void> {
-    console.log('[MAP] Showing history for restaurant:', restaurant.id);
 
     // Reset state
     this.currentRestaurantId = restaurant.id;
@@ -706,7 +679,6 @@ export class MapModule {
         if (endEl) endEl.style.display = 'block';
       }
     } catch (error) {
-      console.error('[MAP] Error loading history:', error);
       alert('加载历史记录失败');
     } finally {
       this.historyLoading = false;
@@ -852,11 +824,9 @@ export class MapModule {
    */
   private static previewMediaUrls(mediaUrls: string[]): void {
     if (mediaUrls.length === 0) {
-      console.warn('[MAP] No media to preview');
       return;
     }
 
-    console.log('[MAP] Previewing media gallery:', mediaUrls.length, 'items');
 
     // Create overlay (semi-transparent background)
     const overlay = document.createElement('div');
@@ -1023,11 +993,9 @@ export class MapModule {
   static previewMedia(restaurant: Restaurant): void {
     const mediaUrls = restaurant.checkInData?.media_urls || [];
     if (mediaUrls.length === 0) {
-      console.warn('[MAP] No media to preview for:', restaurant.restaurant_name);
       return;
     }
 
-    console.log('[MAP] Previewing media gallery:', mediaUrls.length, 'items');
 
     // Mark as read for future use
     if (restaurant.checkInData) {
@@ -1223,7 +1191,6 @@ export class MapModule {
    * Download media file
    */
   private static downloadMedia(url: string, filename: string): void {
-    console.log('[MAP] Downloading media:', filename);
 
     // Create temporary link for download
     const link = document.createElement('a');
@@ -1246,5 +1213,4 @@ export class MapModule {
 // Export to window for backward compatibility
 if (typeof window !== 'undefined') {
   window.MapModule = MapModule;
-  console.log('[MAP] Module exported to window');
 }

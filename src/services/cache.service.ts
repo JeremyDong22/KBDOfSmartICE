@@ -72,19 +72,16 @@ class CacheService {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
 
         request.onerror = () => {
-          console.error('[CacheService] Failed to open IndexedDB:', request.error);
           reject(request.error);
         };
 
         request.onsuccess = () => {
           this.db = request.result;
-          console.log('[CacheService] IndexedDB initialized successfully');
           resolve();
         };
 
         request.onupgradeneeded = (event) => {
           const db = (event.target as IDBOpenDBRequest).result;
-          console.log('[CacheService] Upgrading database schema...');
 
           // Create restaurants store
           if (!db.objectStoreNames.contains(STORES.RESTAURANTS)) {
@@ -121,10 +118,8 @@ class CacheService {
             db.createObjectStore(STORES.AVATARS, { keyPath: 'employee_id' });
           }
 
-          console.log('[CacheService] Database schema upgraded');
         };
       } catch (error) {
-        console.error('[CacheService] Failed to initialize:', error);
         reject(error);
       }
     });
@@ -160,7 +155,6 @@ class CacheService {
         request.onerror = () => reject(request.error);
       });
     } catch (error) {
-      console.error(`[CacheService] Failed to get from ${storeName}:`, error);
       return null;
     }
   }
@@ -180,7 +174,6 @@ class CacheService {
         request.onerror = () => reject(request.error);
       });
     } catch (error) {
-      console.error(`[CacheService] Failed to set in ${storeName}:`, error);
       throw error;
     }
   }
@@ -200,7 +193,6 @@ class CacheService {
         request.onerror = () => reject(request.error);
       });
     } catch (error) {
-      console.error(`[CacheService] Failed to getAll from ${storeName}:`, error);
       return [];
     }
   }
@@ -220,7 +212,6 @@ class CacheService {
         request.onerror = () => reject(request.error);
       });
     } catch (error) {
-      console.error(`[CacheService] Failed to delete from ${storeName}:`, error);
       throw error;
     }
   }
@@ -240,7 +231,6 @@ class CacheService {
         request.onerror = () => reject(request.error);
       });
     } catch (error) {
-      console.error(`[CacheService] Failed to clear ${storeName}:`, error);
       throw error;
     }
   }
@@ -252,18 +242,14 @@ class CacheService {
    */
   static async getRestaurants(): Promise<Restaurant[]> {
     try {
-      console.log('[CACHE] 🔍 CHECKING: restaurants');
       const cached = await this.getAll<CachedRestaurant>(STORES.RESTAURANTS);
       if (cached.length > 0) {
         const age = Date.now() - cached[0]!._cached_at;
-        console.log(`[CACHE] ✅ HIT: restaurants (${cached.length} items, age: ${Math.round(age/1000)}s)`);
       } else {
-        console.log('[CACHE] ❌ MISS: restaurants (empty)');
       }
       // Remove _cached_at metadata before returning
       return cached.map(({ _cached_at, ...restaurant }) => restaurant);
     } catch (error) {
-      console.error('[CacheService] Failed to get restaurants:', error);
       return [];
     }
   }
@@ -273,7 +259,6 @@ class CacheService {
    */
   static async setRestaurants(restaurants: Restaurant[]): Promise<void> {
     try {
-      console.log(`[CACHE] 💾 STORING: restaurants (${restaurants.length} items)`);
       const db = await this.ensureDB();
       const transaction = db.transaction(STORES.RESTAURANTS, 'readwrite');
       const store = transaction.objectStore(STORES.RESTAURANTS);
@@ -288,9 +273,7 @@ class CacheService {
         await store.put(cached);
       }
 
-      console.log(`[CacheService] Cached ${restaurants.length} restaurants`);
     } catch (error) {
-      console.error('[CacheService] Failed to set restaurants:', error);
       throw error;
     }
   }
@@ -311,7 +294,6 @@ class CacheService {
 
       return age < maxAgeMs;
     } catch (error) {
-      console.error('[CacheService] Failed to check restaurant cache validity:', error);
       return false;
     }
   }
@@ -323,18 +305,14 @@ class CacheService {
    */
   static async getEmployees(): Promise<Employee[]> {
     try {
-      console.log('[CACHE] 🔍 CHECKING: employees');
       const cached = await this.getAll<CachedEmployee>(STORES.EMPLOYEES);
       if (cached.length > 0) {
         const age = Date.now() - cached[0]!._cached_at;
-        console.log(`[CACHE] ✅ HIT: employees (${cached.length} items, age: ${Math.round(age/1000)}s)`);
       } else {
-        console.log('[CACHE] ❌ MISS: employees (empty)');
       }
       // Remove _cached_at metadata before returning
       return cached.map(({ _cached_at, ...employee }) => employee);
     } catch (error) {
-      console.error('[CacheService] Failed to get employees:', error);
       return [];
     }
   }
@@ -344,7 +322,6 @@ class CacheService {
    */
   static async setEmployees(employees: Employee[]): Promise<void> {
     try {
-      console.log(`[CACHE] 💾 STORING: employees (${employees.length} items)`);
       const db = await this.ensureDB();
       const transaction = db.transaction(STORES.EMPLOYEES, 'readwrite');
       const store = transaction.objectStore(STORES.EMPLOYEES);
@@ -359,9 +336,7 @@ class CacheService {
         await store.put(cached);
       }
 
-      console.log(`[CacheService] Cached ${employees.length} employees`);
     } catch (error) {
-      console.error('[CacheService] Failed to set employees:', error);
       throw error;
     }
   }
@@ -374,17 +349,13 @@ class CacheService {
   static async getDailyTask(date: string, brandId: number, slotType: string): Promise<Task | null> {
     try {
       const key = `${date}_${brandId}_${slotType}`;
-      console.log(`[CACHE] 🔍 CHECKING: daily_task (key: ${key})`);
       const cached = await this.get<DailyTaskCache>(STORES.DAILY_TASKS, key);
       if (cached) {
         const age = Date.now() - cached.cached_at;
-        console.log(`[CACHE] ✅ HIT: daily_task (${cached.task.task_name}, age: ${Math.round(age/1000)}s)`);
         return cached.task;
       }
-      console.log(`[CACHE] ❌ MISS: daily_task (key: ${key})`);
       return null;
     } catch (error) {
-      console.error('[CacheService] Failed to get daily task:', error);
       return null;
     }
   }
@@ -395,7 +366,6 @@ class CacheService {
   static async setDailyTask(date: string, brandId: number, slotType: string, task: Task): Promise<void> {
     try {
       const key = `${date}_${brandId}_${slotType}`;
-      console.log(`[CACHE] 💾 STORING: daily_task (key: ${key}, task: ${task.task_name})`);
       const cached: DailyTaskCache = {
         key,
         date,
@@ -406,9 +376,7 @@ class CacheService {
       };
 
       await this.set(STORES.DAILY_TASKS, key, cached);
-      console.log(`[CacheService] Cached daily task: ${key} -> ${task.task_name}`);
     } catch (error) {
-      console.error('[CacheService] Failed to set daily task:', error);
       throw error;
     }
   }
@@ -420,17 +388,13 @@ class CacheService {
    */
   static async getCheckInRecords(restaurantId: string): Promise<CheckInRecord[]> {
     try {
-      console.log(`[CACHE] 🔍 CHECKING: check_in_records (restaurant: ${restaurantId})`);
       const cached = await this.get<CheckInRecordsCache>(STORES.CHECK_IN_RECORDS, restaurantId);
       if (cached && cached.records.length > 0) {
         const age = Date.now() - cached.last_updated;
-        console.log(`[CACHE] ✅ HIT: check_in_records (${cached.records.length} items, age: ${Math.round(age/1000)}s)`);
         return cached.records;
       }
-      console.log(`[CACHE] ❌ MISS: check_in_records (restaurant: ${restaurantId})`);
       return [];
     } catch (error) {
-      console.error('[CacheService] Failed to get check-in records:', error);
       return [];
     }
   }
@@ -458,9 +422,7 @@ class CacheService {
       };
 
       await this.set(STORES.CHECK_IN_RECORDS, restaurantId, cached);
-      console.log(`[CacheService] Appended check-in record for restaurant ${restaurantId} (total: ${records.length})`);
     } catch (error) {
-      console.error('[CacheService] Failed to append check-in record:', error);
       throw error;
     }
   }
@@ -480,9 +442,7 @@ class CacheService {
       };
 
       await this.set(STORES.CHECK_IN_RECORDS, restaurantId, cached);
-      console.log(`[CacheService] Set ${limitedRecords.length} check-in records for restaurant ${restaurantId}`);
     } catch (error) {
-      console.error('[CacheService] Failed to set check-in records:', error);
       throw error;
     }
   }
@@ -495,7 +455,6 @@ class CacheService {
    */
   static async getTimeSlotConfig(brandId: number): Promise<TimeSlotConfig[] | null> {
     try {
-      console.log(`[CACHE] 🔍 CHECKING: time_slot_config (brand: ${brandId})`);
       // Use numeric key directly - IndexedDB keyPath is brand_id (number)
       const db = await this.ensureDB();
       const cached = await new Promise<TimeSlotConfigCache | null>((resolve, reject) => {
@@ -509,13 +468,10 @@ class CacheService {
 
       if (cached) {
         const age = Date.now() - cached.cached_at;
-        console.log(`[CACHE] ✅ HIT: time_slot_config (${cached.config.length} slots, age: ${Math.round(age/1000)}s)`);
         return cached.config;
       }
-      console.log(`[CACHE] ❌ MISS: time_slot_config (brand: ${brandId})`);
       return null;
     } catch (error) {
-      console.error('[CacheService] Failed to get time slot config:', error);
       return null;
     }
   }
@@ -526,7 +482,6 @@ class CacheService {
    */
   static async setTimeSlotConfig(brandId: number, config: TimeSlotConfig[]): Promise<void> {
     try {
-      console.log(`[CACHE] 💾 STORING: time_slot_config (brand: ${brandId}, ${config.length} slots)`);
       const cached: TimeSlotConfigCache = {
         brand_id: brandId, // Numeric key for IndexedDB keyPath
         config,
@@ -544,9 +499,7 @@ class CacheService {
         request.onerror = () => reject(request.error);
       });
 
-      console.log(`[CacheService] Cached time slot config for brand ${brandId} (${config.length} slots)`);
     } catch (error) {
-      console.error('[CacheService] Failed to set time slot config:', error);
       throw error;
     }
   }
@@ -558,17 +511,13 @@ class CacheService {
    */
   static async getAvatarBlob(employeeId: string): Promise<Blob | null> {
     try {
-      console.log(`[CACHE] 🔍 CHECKING: avatar (employee: ${employeeId})`);
       const cached = await this.get<AvatarCache>(STORES.AVATARS, employeeId);
       if (cached) {
         const age = Date.now() - cached.cached_at;
-        console.log(`[CACHE] ✅ HIT: avatar (employee: ${employeeId}, age: ${Math.round(age/1000)}s, checked: ${cached.checked_date})`);
         return cached.blob;
       }
-      console.log(`[CACHE] ❌ MISS: avatar (employee: ${employeeId})`);
       return null;
     } catch (error) {
-      console.error('[CacheService] Failed to get avatar blob:', error);
       return null;
     }
   }
@@ -578,7 +527,6 @@ class CacheService {
    */
   static async setAvatarBlob(employeeId: string, blob: Blob): Promise<string> {
     try {
-      console.log(`[CACHE] 💾 STORING: avatar (employee: ${employeeId}, size: ${blob.size}B)`);
       const today = new Date().toISOString().split('T')[0]!; // Format: YYYY-MM-DD
 
       const cached: AvatarCache = {
@@ -592,10 +540,8 @@ class CacheService {
 
       // Create and return object URL
       const objectUrl = URL.createObjectURL(blob);
-      console.log(`[CacheService] Cached avatar for employee ${employeeId}`);
       return objectUrl;
     } catch (error) {
-      console.error('[CacheService] Failed to set avatar blob:', error);
       throw error;
     }
   }
@@ -613,7 +559,6 @@ class CacheService {
       const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
       return cached.checked_date === today;
     } catch (error) {
-      console.error('[CacheService] Failed to check avatar date:', error);
       return false;
     }
   }
@@ -625,7 +570,6 @@ class CacheService {
     try {
       const cached = await this.get<AvatarCache>(STORES.AVATARS, employeeId);
       if (!cached) {
-        console.warn(`[CacheService] No cached avatar found for employee ${employeeId}`);
         return;
       }
 
@@ -633,9 +577,7 @@ class CacheService {
       cached.checked_date = today;
 
       await this.set(STORES.AVATARS, employeeId, cached);
-      console.log(`[CacheService] Marked avatar as checked for employee ${employeeId}`);
     } catch (error) {
-      console.error('[CacheService] Failed to mark avatar as checked:', error);
       throw error;
     }
   }

@@ -18,12 +18,10 @@ export class KBDService {
     // Check in-memory cache first
     const cached = this.brandIdCache.get(restaurantId);
     if (cached !== undefined) {
-      console.log('[KBDService] brand_id cache HIT:', cached);
       return cached;
     }
 
     // Query database
-    console.log('[KBDService] brand_id cache MISS, querying...');
     const { data: restaurantData } = await supabaseClient
       .from('master_restaurant')
       .select('brand_id')
@@ -43,7 +41,6 @@ export class KBDService {
    */
   static setBrandIdCache(restaurantId: string, brandId: number): void {
     this.brandIdCache.set(restaurantId, brandId);
-    console.log('[KBDService] brand_id cache pre-seeded:', brandId);
   }
   /**
    * Get today's task for a specific restaurant and slot
@@ -63,12 +60,10 @@ export class KBDService {
       // 2. Check IndexedDB cache
       const cachedTask = await CacheService.getDailyTask(today, brandId, slotType);
       if (cachedTask) {
-        console.log('[KBDService] Using cached daily task');
         return cachedTask;
       }
 
       // 3. Cache miss - query database
-      console.log('[KBDService] Cache miss, querying database...');
 
       // Check temporary tasks (is_announced=true, execute_date=today)
       const { data: adhocTasks } = await supabaseClient
@@ -137,7 +132,6 @@ export class KBDService {
 
       return null;
     } catch (error) {
-      console.error('[KBDService] Error getting today task:', error);
       throw error;
     }
   }
@@ -148,10 +142,8 @@ export class KBDService {
    */
   static async preloadTasksForAllSlots(restaurantId: string): Promise<void> {
     const slots: SlotType[] = ['lunch_open', 'lunch_close', 'dinner_open', 'dinner_close'];
-    console.log('[KBDService] Preloading tasks for all slots:', slots);
 
     await Promise.all(slots.map(slot => this.getTodayTask(restaurantId, slot)));
-    console.log('[KBDService] Task preload complete');
   }
 
   /**
@@ -177,14 +169,12 @@ export class KBDService {
 
       if (error) throw error;
 
-      console.log('[KBDService] Check-in submitted successfully');
       return { success: true, record: record as unknown as CheckInRecord };
     } catch (error) {
       // Handle Supabase errors (they have message property but aren't Error instances)
       const errorMessage = error instanceof Error
         ? error.message
         : (error as any)?.message || (error as any)?.code || JSON.stringify(error);
-      console.error('[KBDService] Check-in error:', error);
       return { success: false, error: errorMessage };
     }
   }
@@ -201,22 +191,16 @@ export class KBDService {
     try {
       const now = customTime || new Date();
       const today = now.toISOString().split('T')[0]!;
-      console.log('[KBDService] ===== getRestaurantsWithStatus =====');
-      console.log('[KBDService] Date:', today, 'Slot:', slotType);
 
       // 1. Try to get restaurants from cache first (valid for 1 hour)
       let restaurantList: any[] = [];
       const cacheCheckStart = performance.now();
       const cacheValid = await CacheService.isRestaurantsCacheValid(60 * 60 * 1000); // 1 hour
-      console.log(`[KBDService] ⏱️ Cache validity check took ${(performance.now() - cacheCheckStart).toFixed(0)}ms`);
 
       if (cacheValid) {
         const cacheReadStart = performance.now();
-        console.log('[CACHE] ✅ HIT: restaurants - using cached base data');
         restaurantList = await CacheService.getRestaurants() as any[];
-        console.log(`[KBDService] ⏱️ Cache read took ${(performance.now() - cacheReadStart).toFixed(0)}ms`);
       } else {
-        console.log('[CACHE] ❌ MISS: restaurants - querying database');
         // Get all restaurants from database
         const { data: restaurants, error: restaurantError } = await supabaseClient
           .from('master_restaurant')
@@ -253,23 +237,19 @@ export class KBDService {
         }));
 
         // Cache the restaurant base data
-        console.log('[CACHE] 💾 STORING: restaurants');
         await CacheService.setRestaurants(restaurantList as Restaurant[]);
       }
 
       // 2. Always query fresh check-in records for today's slot
       const checkInQueryStart = performance.now();
-      console.log('[CACHE] 🔄 FRESH QUERY: check-in records for today');
       const { data: checkIns, error: checkInError } = await supabaseClient
         .from('kbd_check_in_record')
         .select('restaurant_id, media_urls, check_in_date, slot_type, text_content')
         .eq('check_in_date', today)
         .eq('slot_type', slotType!);
-      console.log(`[KBDService] ⏱️ Check-in records query took ${(performance.now() - checkInQueryStart).toFixed(0)}ms`);
 
       if (checkInError) {
         // If no check-ins found, that's okay
-        console.log('[KBDService] No check-ins found for today:', checkInError);
       }
 
       const checkInList = (checkIns || []) as any[];
@@ -284,10 +264,8 @@ export class KBDService {
         displayMode: displayMode // Flag to indicate display mode
       })) as Restaurant[];
 
-      console.log(`[KBDService] ===== getRestaurantsWithStatus completed in ${(performance.now() - funcStart).toFixed(0)}ms =====`);
       return result;
     } catch (error) {
-      console.error('[KBDService] Error getting restaurants:', error);
       throw error;
     }
   }
@@ -336,7 +314,6 @@ export class KBDService {
 
       return null; // Not in any time window
     } catch (error) {
-      console.error('[KBDService] Error getting current time slot:', error);
       return null;
     }
   }
@@ -409,10 +386,8 @@ export class KBDService {
         .from('KBD')
         .getPublicUrl(path);
 
-      console.log('[KBDService] Media uploaded:', publicUrl);
       return publicUrl;
     } catch (error) {
-      console.error('[KBDService] Upload error:', error);
       throw error;
     }
   }
@@ -432,28 +407,21 @@ export class KBDService {
   }> {
     const historyStart = performance.now();
     try {
-      console.log('[KBDService] ===== Fetching check-in history =====');
-      console.log('[KBDService] Params:', { restaurantId, limit, offset });
 
       // For first page (offset=0, limit<=10), try cache first
       if (offset === 0 && limit <= 10) {
         const cacheCheckStart = performance.now();
-        console.log('[CACHE] 🔍 CHECKING: check_in_history');
         const cachedRecords = await CacheService.getCheckInRecords(restaurantId);
-        console.log(`[KBDService] ⏱️ Cache check took ${(performance.now() - cacheCheckStart).toFixed(0)}ms`);
 
         if (cachedRecords.length > 0) {
-          console.log(`[CACHE] ✅ HIT: check_in_history (${cachedRecords.length} records)`);
 
           // Check if cached records already have task info embedded
           const firstRecord = cachedRecords[0] as any;
           if (firstRecord?.task) {
             // Cached records already have task info, use directly
-            console.log('[CACHE] ✅ Task info already embedded, skipping lookup');
             const enrichedRecords = cachedRecords.slice(0, limit) as Array<CheckInRecord & { task?: Task }>;
 
             const totalTime = performance.now() - historyStart;
-            console.log(`[KBDService] ===== History loaded (CACHE HIT) in ${totalTime.toFixed(0)}ms =====`);
 
             return {
               records: enrichedRecords,
@@ -462,14 +430,12 @@ export class KBDService {
           }
 
           // Legacy cache without task info - need to lookup tasks
-          console.log('[CACHE] ⚠️ Legacy cache without task info, querying tasks...');
           const taskQueryStart = performance.now();
           const taskIds = [...new Set(cachedRecords.map(r => r.task_id))];
           const { data: tasks } = await supabaseClient
             .from('kbd_task_pool')
             .select('id, task_name, task_description, media_type')
             .in('id', taskIds);
-          console.log(`[KBDService] ⏱️ Task lookup took ${(performance.now() - taskQueryStart).toFixed(0)}ms`);
 
           const taskMap = new Map((tasks || []).map((t: any) => [t.id, t as Task]));
 
@@ -479,20 +445,16 @@ export class KBDService {
           }));
 
           // Update cache with enriched records (so next load is instant)
-          console.log('[CACHE] 💾 UPDATING: check_in_history (adding task info)');
           await CacheService.setCheckInRecords(restaurantId, enrichedRecords as any);
 
           const totalTime = performance.now() - historyStart;
-          console.log(`[KBDService] ===== History loaded (CACHE HIT) in ${totalTime.toFixed(0)}ms =====`);
 
           return {
             records: enrichedRecords,
             hasMore: cachedRecords.length > limit
           };
         }
-        console.log('[CACHE] ❌ MISS: check_in_history (empty)');
       } else {
-        console.log('[CACHE] ⚠️ SKIPPED: check_in_history (offset > 0, querying database)');
       }
 
       // Cache miss or pagination - query database
@@ -503,12 +465,10 @@ export class KBDService {
         .eq('restaurant_id', restaurantId)
         .order('check_in_at', { ascending: false })
         .range(offset, offset + limit); // limit + 1 to check if there are more records
-      console.log(`[KBDService] ⏱️ DB query took ${(performance.now() - dbQueryStart).toFixed(0)}ms`);
 
       if (error) throw error;
 
       const recordList = (records || []) as CheckInRecord[];
-      console.log('[KBDService] Fetched', recordList.length, 'records from database');
 
       // Check if there are more records
       const hasMore = recordList.length > limit;
@@ -521,7 +481,6 @@ export class KBDService {
         .from('kbd_task_pool')
         .select('id, task_name, task_description, media_type')
         .in('id', taskIds);
-      console.log(`[KBDService] ⏱️ Task lookup took ${(performance.now() - taskQueryStart).toFixed(0)}ms`);
 
       const taskMap = new Map((tasks || []).map((t: any) => [t.id, t as Task]));
 
@@ -534,20 +493,16 @@ export class KBDService {
       // Cache first page results WITH task info embedded
       if (offset === 0 && enrichedRecords.length > 0) {
         const cacheStoreStart = performance.now();
-        console.log('[CACHE] 💾 STORING: check_in_history (with task info)');
         await CacheService.setCheckInRecords(restaurantId, enrichedRecords as any);
-        console.log(`[KBDService] ⏱️ Cache store took ${(performance.now() - cacheStoreStart).toFixed(0)}ms`);
       }
 
       const totalTime = performance.now() - historyStart;
-      console.log(`[KBDService] ===== History loaded (DB QUERY) in ${totalTime.toFixed(0)}ms =====`);
 
       return {
         records: enrichedRecords,
         hasMore
       };
     } catch (error) {
-      console.error('[KBDService] Error fetching history:', error);
       throw error;
     }
   }

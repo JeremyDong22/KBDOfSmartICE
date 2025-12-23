@@ -20,7 +20,6 @@ export class TimeScheduler {
    * @param config - Array of time slot configurations (4 slots)
    */
   static init(config: TimeSlotConfig[]): void {
-    console.log('[TimeScheduler] Initializing with', config.length, 'slot configs');
     this.slotConfig = config;
 
     // Detect current slot immediately
@@ -32,7 +31,6 @@ export class TimeScheduler {
     // Listen for page visibility changes (wake from sleep)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        console.log('[TimeScheduler] Page became visible, checking time slot');
         this.checkNow();
         this.scheduleNext();
       }
@@ -123,7 +121,6 @@ export class TimeScheduler {
    * Stop all timers and clear callbacks
    */
   static stop(): void {
-    console.log('[TimeScheduler] Stopping all timers');
     if (this.mainTimer) clearTimeout(this.mainTimer);
     if (this.preloadTimer) clearTimeout(this.preloadTimer);
     this.mainTimer = null;
@@ -166,12 +163,10 @@ export class TimeScheduler {
       this.currentSlot = newSlot;
 
       if (newSlot) {
-        console.log(`[TimeScheduler] Slot detected: ${newSlot}`);
         this.slotChangeCallbacks.forEach(cb => {
           try {
             cb(newSlot!, previousSlot);
           } catch (e) {
-            console.error('[TimeScheduler] Error in slot change callback:', e);
           }
         });
       }
@@ -197,7 +192,6 @@ export class TimeScheduler {
 
     const nextSlotInfo = this.getNextSlotInfo();
     if (!nextSlotInfo) {
-      console.log('[TimeScheduler] No next slot found');
       return;
     }
 
@@ -205,19 +199,13 @@ export class TimeScheduler {
     const msUntilNext = nextSlotInfo.startsAt.getTime() - now.getTime();
     const msUntilPreload = msUntilNext - (5 * 60 * 1000); // 5 minutes before
 
-    console.log(
-      `[TimeScheduler] Next slot: ${nextSlotInfo.slot} in ${Math.round(msUntilNext / 1000)}s`
-    );
-
     // Set preload timer if there's more than 5 minutes
     if (msUntilPreload > 0) {
       this.preloadTimer = setTimeout(() => {
-        console.log('[TimeScheduler] Preload trigger for:', nextSlotInfo.slot);
         this.preloadCallbacks.forEach(cb => {
           try {
             cb(nextSlotInfo.slot);
           } catch (e) {
-            console.error('[TimeScheduler] Error in preload callback:', e);
           }
         });
       }, msUntilPreload);
@@ -229,12 +217,10 @@ export class TimeScheduler {
         const previousSlot = this.currentSlot;
         this.currentSlot = nextSlotInfo.slot;
 
-        console.log(`[TimeScheduler] Slot changed: ${previousSlot} -> ${nextSlotInfo.slot}`);
         this.slotChangeCallbacks.forEach(cb => {
           try {
             cb(nextSlotInfo.slot, previousSlot);
           } catch (e) {
-            console.error('[TimeScheduler] Error in slot change callback:', e);
           }
         });
 

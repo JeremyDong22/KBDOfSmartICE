@@ -5,7 +5,6 @@
 import { AuthService } from '@services/auth.service';
 import type { Restaurant, Task, SlotType, MediaType } from '@/types/models';
 
-console.log('[UI] Module loaded');
 
 export class UIModule {
   /**
@@ -28,7 +27,6 @@ export class UIModule {
       const TimeControlModule = (window as any).TimeControlModule;
       if (TimeControlModule && TimeControlModule.isDevMode && TimeControlModule.isDevMode()) {
         now = TimeControlModule.getCurrentTime();
-        console.log('[UI] Using dev time for business status:', TimeControlModule.getFormattedTime());
       } else {
         now = new Date();
       }
@@ -97,14 +95,12 @@ export class UIModule {
       statusDot.classList.add(businessStatus.dotColor);
     }
 
-    console.log('[UI] Status bar updated:', businessStatus.status, `(${businessStatus.dotColor})`);
   }
 
   /**
    * Update check-in panel based on current state
    */
   static updateCheckInPanel(isCheckedIn: boolean, currentTask: Task | null): void {
-    console.log('[UI] Updating check-in panel, checked in:', isCheckedIn);
 
     const panelTitle = document.getElementById('panelTitle');
     const panelSubtitle = document.getElementById('panelSubtitle');
@@ -113,19 +109,16 @@ export class UIModule {
       if (panelTitle) panelTitle.textContent = '✓ 已打卡';
       if (panelSubtitle) panelSubtitle.textContent = '今日任务已完成';
       this.hideAllInputSections();
-      console.log('[UI] Panel set to checked-in state');
       return;
     }
 
     // Show task info and appropriate input method
     if (currentTask) {
-      console.log('[UI] Showing task:', currentTask.task_name, 'Media type:', currentTask.media_type);
 
       if (panelTitle) panelTitle.textContent = currentTask.task_name;
       if (panelSubtitle) panelSubtitle.textContent = currentTask.task_description || '';
       this.showInputSection(currentTask.media_type);
     } else {
-      console.warn('[UI] No current task to display');
     }
   }
 
@@ -133,7 +126,6 @@ export class UIModule {
    * Hide all input sections
    */
   static hideAllInputSections(): void {
-    console.log('[UI] Hiding all input sections');
 
     const sections = [
       'notificationInput',
@@ -167,13 +159,11 @@ export class UIModule {
 
     const sectionId = sectionMap[mediaType];
     if (sectionId) {
-      console.log('[UI] Showing input section:', sectionId);
       const section = document.getElementById(sectionId) as HTMLElement;
       if (section) {
         section.style.display = 'flex';
       }
     } else {
-      console.warn('[UI] Unknown media type:', mediaType);
     }
   }
 
@@ -181,7 +171,6 @@ export class UIModule {
    * Show check-in panel with animation
    */
   static showCheckInPanel(): void {
-    console.log('[UI] Showing check-in panel');
 
     const panel = document.getElementById('checkinPanel') as HTMLElement;
     if (panel) {
@@ -189,7 +178,6 @@ export class UIModule {
 
       setTimeout(() => {
         panel.classList.add('visible');
-        console.log('[UI] Check-in panel visible');
       }, 100);
     }
   }
@@ -198,7 +186,6 @@ export class UIModule {
    * Hide check-in panel with animation
    */
   static hideCheckInPanel(): void {
-    console.log('[UI] Hiding check-in panel');
 
     const panel = document.getElementById('checkinPanel') as HTMLElement;
     if (panel) {
@@ -206,7 +193,6 @@ export class UIModule {
 
       setTimeout(() => {
         panel.style.display = 'none';
-        console.log('[UI] Check-in panel hidden');
       }, 500);
     }
   }
@@ -218,11 +204,9 @@ export class UIModule {
     _mediaUrl: string | null,
     updateRestaurants: () => Promise<void>
   ): Promise<void> {
-    console.log('[UI] Starting three-step check-in animation');
 
     // Step 1: Map unblur + avatar state change (≤200ms)
     setTimeout(async () => {
-      console.log('[UI] Animation Step 1: Unblur map and update markers');
 
       if (updateRestaurants) {
         await updateRestaurants();
@@ -237,7 +221,6 @@ export class UIModule {
 
     // Step 2: Show "已打卡" (≈300ms)
     setTimeout(() => {
-      console.log('[UI] Animation Step 2: Show completion message');
 
       const panelTitle = document.getElementById('panelTitle');
       const panelSubtitle = document.getElementById('panelSubtitle');
@@ -249,7 +232,6 @@ export class UIModule {
 
     // Step 3: Fade out panel (≈800ms later)
     setTimeout(() => {
-      console.log('[UI] Animation Step 3: Fade out panel');
       const panel = document.getElementById('checkinPanel');
       if (panel) {
         panel.classList.add('fade-out');
@@ -262,7 +244,6 @@ export class UIModule {
         panel.classList.remove('visible', 'fade-out');
         panel.style.display = 'none';
       }
-      console.log('[UI] Check-in animation complete');
     }, 1200);
   }
 
@@ -270,7 +251,6 @@ export class UIModule {
    * Render restaurant navigation menu
    */
   static renderRestaurantNav(restaurants: Restaurant[], currentUserId: string): void {
-    console.log('[UI] Rendering restaurant navigation, total:', restaurants.length);
 
     const navContainer = document.getElementById('restaurantNav');
     if (!navContainer) return;
@@ -299,7 +279,6 @@ export class UIModule {
       `;
 
       navItem.addEventListener('click', () => {
-        console.log('[UI] Navigation clicked:', restaurant.restaurant_name);
         const MapModule = window.MapModule;
         if (MapModule) {
           MapModule.focusOnRestaurant(restaurant.id);
@@ -309,14 +288,12 @@ export class UIModule {
       navContainer.appendChild(navItem);
     });
 
-    console.log('[UI] Restaurant navigation rendered');
   }
 
   /**
    * Show loading overlay
    */
   static showLoading(message: string = '加载中...'): void {
-    console.log('[UI] Showing loading overlay:', message);
 
     const overlay = document.getElementById('loadingOverlay') as HTMLElement;
     const text = document.querySelector('.loading-text') as HTMLElement;
@@ -334,7 +311,6 @@ export class UIModule {
    * Hide loading overlay
    */
   static hideLoading(): void {
-    console.log('[UI] Hiding loading overlay');
     const overlay = document.getElementById('loadingOverlay') as HTMLElement;
     if (overlay) {
       overlay.style.display = 'none';
@@ -347,19 +323,16 @@ export class UIModule {
    * Use TimeControlModule.initialize() instead.
    */
   static setupTimeJumpControls(_onTimeJump: (slot: SlotType | null) => Promise<void>): void {
-    console.warn('[UI] setupTimeJumpControls is deprecated - use TimeControlModule instead');
   }
 
   /**
    * Setup logout button
    */
   static setupLogoutButton(): void {
-    console.log('[UI] Setting up logout button');
 
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
-        console.log('[UI] Logout button clicked');
         AuthService.logout();
       });
     }
@@ -369,5 +342,4 @@ export class UIModule {
 // Export to window for backward compatibility
 if (typeof window !== 'undefined') {
   window.UIModule = UIModule;
-  console.log('[UI] Module exported to window');
 }

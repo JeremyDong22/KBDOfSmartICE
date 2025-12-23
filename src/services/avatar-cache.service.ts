@@ -33,7 +33,6 @@ class AvatarCacheService {
   static async getAvatarUrl(employeeId: string, remoteUrl: string): Promise<string> {
     // Handle empty remote URL
     if (!remoteUrl || remoteUrl.trim() === '') {
-      console.log(`[AvatarCache] No remote URL provided for employee ${employeeId}`);
       return ''; // Return empty string for default avatar handling
     }
 
@@ -47,12 +46,10 @@ class AvatarCacheService {
 
         if (checkedToday) {
           // Cache is fresh, return immediately
-          console.log(`[AvatarCache] Using cached avatar for employee ${employeeId}`);
           return URL.createObjectURL(cachedBlob);
         }
 
         // Step 3: Cache exists but not verified today - trigger background check
-        console.log(`[AvatarCache] Cache exists but not verified today for employee ${employeeId}, triggering background check`);
         this.backgroundCheck(employeeId, remoteUrl);
 
         // Return cached version immediately (non-blocking)
@@ -60,11 +57,9 @@ class AvatarCacheService {
       }
 
       // Step 4: No cache, download and cache
-      console.log(`[AvatarCache] No cache found for employee ${employeeId}, downloading...`);
       return await this.downloadAndCache(employeeId, remoteUrl);
 
     } catch (error) {
-      console.error(`[AvatarCache] Error getting avatar for employee ${employeeId}:`, error);
       // Fallback to remote URL on error
       return remoteUrl;
     }
@@ -79,7 +74,6 @@ class AvatarCacheService {
    * It checks each employee's avatar freshness and triggers downloads if needed.
    */
   static async checkAndUpdateAvatars(employees: Employee[]): Promise<void> {
-    console.log(`[AvatarCache] Starting background check for ${employees.length} employees`);
 
     for (const emp of employees) {
       // Skip employees without avatar URLs
@@ -93,16 +87,13 @@ class AvatarCacheService {
 
         if (!checkedToday) {
           // Not verified today, trigger background download (non-blocking)
-          console.log(`[AvatarCache] Scheduling background update for employee ${emp.id}`);
           this.backgroundCheck(emp.id, emp.profile_photo_url);
         }
       } catch (error) {
         // Single employee failure should not affect others
-        console.error(`[AvatarCache] Error checking avatar for employee ${emp.id}:`, error);
       }
     }
 
-    console.log(`[AvatarCache] Background check scheduled for all employees`);
   }
 
   /**
@@ -115,12 +106,10 @@ class AvatarCacheService {
    * Use this when you know the avatar has been updated remotely.
    */
   static async refreshAvatar(employeeId: string, remoteUrl: string): Promise<string> {
-    console.log(`[AvatarCache] Force refreshing avatar for employee ${employeeId}`);
 
     try {
       return await this.downloadAndCache(employeeId, remoteUrl);
     } catch (error) {
-      console.error(`[AvatarCache] Failed to refresh avatar for employee ${employeeId}:`, error);
       // Fallback to remote URL
       return remoteUrl;
     }
@@ -133,7 +122,6 @@ class AvatarCacheService {
    * Could be triggered by a periodic maintenance task.
    */
   static async cleanupStaleAvatars(): Promise<void> {
-    console.log('[AvatarCache] Cleanup not implemented yet');
     // TODO: Future implementation
     // 1. Get all cached avatars
     // 2. Check cached_at timestamp
@@ -155,11 +143,9 @@ class AvatarCacheService {
     // Fire and forget - do not await
     this.downloadAndCache(employeeId, remoteUrl)
       .then(() => {
-        console.log(`[AvatarCache] Background update complete for employee ${employeeId}`);
       })
       .catch((error) => {
         // Silent failure - log only
-        console.error(`[AvatarCache] Background update failed for employee ${employeeId}:`, error);
       });
   }
 
@@ -186,7 +172,6 @@ class AvatarCacheService {
       }
 
       const blob = await response.blob();
-      console.log(`[AvatarCache] Downloaded avatar for employee ${employeeId} (${blob.size} bytes, ${blob.type})`);
 
       // Step 2: Cache the Blob in IndexedDB
       const objectUrl = await CacheService.setAvatarBlob(employeeId, blob);
@@ -194,11 +179,9 @@ class AvatarCacheService {
       // Step 3: Mark as checked today
       await CacheService.markAvatarChecked(employeeId);
 
-      console.log(`[AvatarCache] Successfully cached avatar for employee ${employeeId}`);
       return objectUrl;
 
     } catch (error) {
-      console.error(`[AvatarCache] Failed to download and cache avatar for employee ${employeeId}:`, error);
       throw error; // Re-throw to let caller handle fallback
     }
   }

@@ -2,7 +2,6 @@
 // Time Control Module - Developer time simulation with collapsible clock interface
 // Handles: Simulated time state, time and date adjustments, auto-ticking clock, time window boundary detection
 
-console.log('[TIME] Module loaded');
 
 export class TimeControlModule {
   // State
@@ -26,7 +25,6 @@ export class TimeControlModule {
    * Initialize time control panel
    */
   static initialize(onTimeWindowChange: () => Promise<void>): void {
-    console.log('[TIME] Initializing time control module');
 
     this.onTimeWindowChange = onTimeWindowChange;
 
@@ -34,7 +32,6 @@ export class TimeControlModule {
     const toggleBtn = document.getElementById('timeControlToggle');
     if (toggleBtn) {
       toggleBtn.addEventListener('click', () => this.togglePanel());
-      console.log('[TIME] Toggle button listener attached');
     }
 
     // Set up time adjustment buttons
@@ -46,13 +43,11 @@ export class TimeControlModule {
         this.adjustTime(unit, delta);
       });
     });
-    console.log('[TIME] Time adjustment buttons ready');
 
     // Set up reset button
     const resetBtn = document.getElementById('resetDevTime');
     if (resetBtn) {
       resetBtn.addEventListener('click', () => this.resetTime());
-      console.log('[TIME] Reset button listener attached');
     }
 
     // Initialize display with current time
@@ -61,7 +56,6 @@ export class TimeControlModule {
     // Start auto-ticking
     this.startTicking();
 
-    console.log('[TIME] Time control module initialized');
   }
 
   /**
@@ -75,10 +69,8 @@ export class TimeControlModule {
 
     if (this.isCollapsed) {
       panel.classList.add('collapsed');
-      console.log('[TIME] Panel collapsed');
     } else {
       panel.classList.remove('collapsed');
-      console.log('[TIME] Panel expanded');
     }
   }
 
@@ -96,14 +88,12 @@ export class TimeControlModule {
     this.devTime = new Date(time);
     this.updateDisplay();
     this.checkTimeWindowBoundary();
-    console.log('[TIME] Dev time set to:', this.formatTime(this.devTime));
   }
 
   /**
    * Reset to real time
    */
   private static resetTime(): void {
-    console.log('[TIME] Resetting to real time');
     this.devTime = null;
     this.updateDisplay();
     this.checkTimeWindowBoundary();
@@ -134,7 +124,6 @@ export class TimeControlModule {
     this.updateDisplay();
     this.checkTimeWindowBoundary();
 
-    console.log('[TIME] Adjusted', unit, 'by', delta, '- New time:', this.formatDateTime(this.devTime));
   }
 
   /**
@@ -156,7 +145,6 @@ export class TimeControlModule {
       }
     }, 1000);
 
-    console.log('[TIME] Auto-ticking started');
   }
 
   /**
@@ -166,7 +154,6 @@ export class TimeControlModule {
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
       this.tickInterval = null;
-      console.log('[TIME] Auto-ticking stopped');
     }
   }
 
@@ -244,12 +231,10 @@ export class TimeControlModule {
     const currentSlot = this.getCurrentSlotType();
 
     if (currentSlot !== this.previousSlotType) {
-      console.log('[TIME] Time window boundary crossed:', this.previousSlotType, '->', currentSlot);
       this.previousSlotType = currentSlot;
 
       // Trigger state update
       if (this.onTimeWindowChange) {
-        console.log('[TIME] Triggering time window change callback');
         await this.onTimeWindowChange();
       }
     }
@@ -302,5 +287,4 @@ export class TimeControlModule {
 // Export to window for backward compatibility
 if (typeof window !== 'undefined') {
   window.TimeControlModule = TimeControlModule;
-  console.log('[TIME] Module exported to window');
 }

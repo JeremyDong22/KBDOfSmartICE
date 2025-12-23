@@ -5,7 +5,6 @@
 import L from 'leaflet';
 import type { Restaurant } from '@/types/models';
 
-console.log('[EDGE] Module loaded');
 
 interface OffScreenRestaurant {
   restaurant: Restaurant;
@@ -34,7 +33,6 @@ export class EdgeIndicatorsModule {
    * Initialize edge indicators
    */
   static initialize(mapInstance: L.Map, restaurantData: Restaurant[]): void {
-    console.log('[EDGE] Initializing edge indicators');
 
     this.map = mapInstance;
     this.restaurants = restaurantData;
@@ -60,14 +58,12 @@ export class EdgeIndicatorsModule {
       }
     }, 2000);
 
-    console.log('[EDGE] Edge indicators initialized');
   }
 
   /**
    * Update restaurant data
    */
   static updateRestaurantData(restaurantData: Restaurant[]): void {
-    console.log('[EDGE] Updating restaurant data');
     this.restaurants = restaurantData;
     this.updateIndicators();
   }
@@ -249,7 +245,6 @@ export class EdgeIndicatorsModule {
 
       // Click handler - navigate to restaurant
       indicator.addEventListener('click', () => {
-        console.log('[EDGE] Indicator clicked, focusing on:', restaurant.restaurant_name);
         const MapModule = window.MapModule;
         if (MapModule && MapModule.focusOnRestaurant) {
           MapModule.focusOnRestaurant(restaurant.id);
@@ -260,7 +255,6 @@ export class EdgeIndicatorsModule {
       document.body.appendChild(indicator);
       this.indicators[indicatorId] = indicator;
 
-      console.log('[EDGE] Created indicator for:', restaurant.restaurant_name, 'at position:', { x, y });
     }
   }
 
@@ -278,7 +272,6 @@ export class EdgeIndicatorsModule {
    * Destroy module and clean up
    */
   static destroy(): void {
-    console.log('[EDGE] Destroying edge indicators module');
 
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
@@ -300,5 +293,4 @@ export class EdgeIndicatorsModule {
 // Export to window for backward compatibility
 if (typeof window !== 'undefined') {
   window.EdgeIndicatorsModule = EdgeIndicatorsModule;
-  console.log('[EDGE] Module exported to window');
 }
