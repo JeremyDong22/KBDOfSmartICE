@@ -1,4 +1,4 @@
-// Version: 4.6 - Cache enriched records with task info to eliminate task lookup query
+// Version: 4.7 - Added verbose logging to uploadMedia for debugging
 // KBD business logic service with type safety
 
 import { supabaseClient } from './supabase';
@@ -356,9 +356,19 @@ export class KBDService {
   }
 
   /**
-   * Upload media to Supabase Storage
+   * Upload media to Supabase Storage with timeout and retry logic
+   * Timeout: 3 minutes for large files
    */
   static async uploadMedia(file: File, restaurantId: string, slotType: SlotType, employeeId: string): Promise<string> {
+    console.log('[KBDService.uploadMedia] Starting upload:', {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+      restaurantId,
+      slotType,
+      employeeId
+    });
+
     try {
       const now = new Date();
       const year = now.getFullYear();
@@ -371,24 +381,58 @@ export class KBDService {
                        file.type.startsWith('video/') ? 'video' : 'voice';
 
       // Get brand_id (uses in-memory cache)
+      console.log('[KBDService.uploadMedia] Getting brand_id...');
       const brandId = await this.getBrandId(restaurantId);
+      console.log('[KBDService.uploadMedia] brand_id:', brandId);
 
       const path = `${brandId}/${restaurantId}/${year}/${month}/${date}/${slotType}/${mediaType}/${employeeId}_${timestamp}.${ext}`;
+      console.log('[KBDService.uploadMedia] Upload path:', path);
 
-      const { error } = await supabaseClient.storage
+      console.log('[KBDService.uploadMedia] Starting Supabase storage upload...');
+      const uploadStart = performance.now();
+
+      // Create upload promise with timeout (3 minutes for large files)
+      const uploadPromise = supabaseClient.storage
         .from('KBD')
-        .upload(path, file);
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      if (error) throw error;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Upload timeout after 3 minutes'));
+        }, 180000); // 3 minutes
+      });
+
+      const { error } = await Promise.race([uploadPromise, timeoutPromise]);
+      const uploadTime = performance.now() - uploadStart;
+      console.log('[KBDService.uploadMedia] Supabase upload completed in', uploadTime.toFixed(0), 'ms');
+
+      if (error) {
+        console.error('[KBDService.uploadMedia] Upload error:', error);
+        throw new Error(`上传失败: ${error.message || '未知错误'}`);
+      }
 
       // Get public URL
+      console.log('[KBDService.uploadMedia] Getting public URL...');
       const { data: { publicUrl } } = supabaseClient.storage
         .from('KBD')
         .getPublicUrl(path);
+      console.log('[KBDService.uploadMedia] Public URL:', publicUrl);
 
       return publicUrl;
     } catch (error) {
-      throw error;
+      console.error('[KBDService.uploadMedia] Error:', error);
+
+      // Provide user-friendly error messages
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          throw new Error('上传超时，请检查网络连接或选择较小的文件');
+        }
+        throw error;
+      }
+      throw new Error('上传失败，请重试');
     }
   }
 

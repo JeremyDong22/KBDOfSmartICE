@@ -1,4 +1,4 @@
-// Version: 6.6 - Use brand_id from sessionStorage (fetched at login) to eliminate 1.7s query
+// Version: 6.8 - Production mode: hide dev time control, lock interactions when panel open
 // App Module - Main application coordination and initialization
 // Handles: Application initialization, time slot detection, state management, coordination between modules
 
@@ -12,9 +12,25 @@ import { EdgeIndicatorsModule } from '@modules/edge-indicators';
 import { MapModule } from '@modules/map';
 import { CheckInModule } from '@modules/checkin';
 import { UIModule } from '@modules/ui';
-import { TimeControlModule } from '@modules/time-control';
 import { TimeScheduler } from '@modules/time-scheduler';
 import type { Employee, Restaurant, Task, SlotType, TimeSlotConfig, CheckInRecord } from '@/types/models';
+
+// Conditionally import TimeControlModule only in development
+// In production, this import is tree-shaken away
+let TimeControlModule: typeof import('@modules/time-control').TimeControlModule | null = null;
+if (import.meta.env.DEV) {
+  import('@modules/time-control').then(m => {
+    TimeControlModule = m.TimeControlModule;
+  });
+}
+
+// Debug logging only in development mode
+const debugLog = (...args: unknown[]) => {
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.log(...args);
+  }
+};
 
 
 export class AppModule {
@@ -34,6 +50,11 @@ export class AppModule {
    */
   static async init(): Promise<void> {
     const initStart = performance.now();
+
+    // Add production class to body if in production mode
+    if (import.meta.env.PROD) {
+      document.body.classList.add('production');
+    }
 
     // 1. Initialize cache service (must be first)
     const cacheStart = performance.now();
@@ -76,8 +97,10 @@ export class AppModule {
     UIModule.setupLogoutButton();
     this.setupRecenterButton();
 
-    // 9. Initialize time control module (dev mode)
-    TimeControlModule.initialize(() => this.handleTimeWindowChange());
+    // 9. Initialize time control module (dev mode only)
+    if (import.meta.env.DEV && TimeControlModule) {
+      TimeControlModule.initialize(() => this.handleTimeWindowChange());
+    }
 
     // 10. Start Realtime subscription
     const realtimeStart = performance.now();
@@ -146,8 +169,8 @@ export class AppModule {
       // Get user's brand_id (cached)
       const brandId = await this.getBrandId();
 
-      // Get current time slot, using dev time if available
-      const devTime = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : null;
+      // Get current time slot, using dev time if available (dev mode only)
+      const devTime = TimeControlModule?.isDevMode() ? TimeControlModule.getCurrentTime() : null;
       if (devTime) {
       }
 
@@ -184,8 +207,8 @@ export class AppModule {
         displayMode = true;
       }
 
-      // Use dev time if available for cross-day testing
-      const devTime = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : null;
+      // Use dev time if available for cross-day testing (dev mode only)
+      const devTime = TimeControlModule?.isDevMode() ? TimeControlModule.getCurrentTime() : null;
       this.allRestaurants = await KBDService.getRestaurantsWithStatus(slotForFetch, displayMode, devTime);
 
 
@@ -245,8 +268,8 @@ export class AppModule {
    */
   static async updateUIBasedOnTimeWindow(): Promise<void> {
 
-    // Use dev time if available for cross-day testing
-    const devTime = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : null;
+    // Use dev time if available for cross-day testing (dev mode only)
+    const devTime = TimeControlModule?.isDevMode() ? TimeControlModule.getCurrentTime() : null;
 
     if (!this.isInTimeWindow) {
 
@@ -300,8 +323,8 @@ export class AppModule {
 
 
     try {
-      // Use dev time if available for cross-day testing
-      const devTime = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : null;
+      // Use dev time if available for cross-day testing (dev mode only)
+      const devTime = TimeControlModule?.isDevMode() ? TimeControlModule.getCurrentTime() : null;
       if (devTime) {
       }
 
@@ -422,8 +445,7 @@ export class AppModule {
    */
   private static handleNewCheckIn(record: CheckInRecord): void {
     const startTime = performance.now();
-    // eslint-disable-next-line no-console
-    console.log('[APP] 🔔 handleNewCheckIn START', {
+    debugLog('[APP] handleNewCheckIn START', {
       restaurant_id: record.restaurant_id,
       employee_id: record.employee_id
     });
@@ -432,8 +454,7 @@ export class AppModule {
     const findStart = performance.now();
     const restaurant = this.allRestaurants.find(r => r.id === record.restaurant_id);
     const findDuration = performance.now() - findStart;
-    // eslint-disable-next-line no-console
-    console.log(`[APP] ⏱️ Restaurant lookup: ${findDuration.toFixed(2)}ms`, {
+    debugLog(`[APP] Restaurant lookup: ${findDuration.toFixed(2)}ms`, {
       found: !!restaurant,
       restaurant_name: restaurant?.restaurant_name
     });
@@ -443,31 +464,25 @@ export class AppModule {
       const updateStart = performance.now();
       restaurant.checked = true;
       restaurant.checkInData = record;
-      // eslint-disable-next-line no-console
-      console.log(`[APP] ⏱️ State update: ${(performance.now() - updateStart).toFixed(2)}ms`);
+      debugLog(`[APP] State update: ${(performance.now() - updateStart).toFixed(2)}ms`);
 
       // Update all map markers
       const markerStart = performance.now();
       MapModule.updateAllMarkers(this.allRestaurants);
-      // eslint-disable-next-line no-console
-      console.log(`[APP] ⏱️ Map markers update: ${(performance.now() - markerStart).toFixed(2)}ms`);
+      debugLog(`[APP] Map markers update: ${(performance.now() - markerStart).toFixed(2)}ms`);
 
       // Update edge indicators
       const edgeStart = performance.now();
       EdgeIndicatorsModule.updateRestaurantData(this.allRestaurants);
-      // eslint-disable-next-line no-console
-      console.log(`[APP] ⏱️ Edge indicators update: ${(performance.now() - edgeStart).toFixed(2)}ms`);
+      debugLog(`[APP] Edge indicators update: ${(performance.now() - edgeStart).toFixed(2)}ms`);
 
-      // eslint-disable-next-line no-console
-      console.log('[APP] ✅ Updated restaurant status from Realtime:', restaurant.restaurant_name);
+      debugLog('[APP] Updated restaurant status from Realtime:', restaurant.restaurant_name);
     } else {
-      // eslint-disable-next-line no-console
-      console.warn('[APP] ⚠️ Restaurant not found in local state:', record.restaurant_id);
+      debugLog('[APP] Restaurant not found in local state:', record.restaurant_id);
     }
 
     const totalDuration = performance.now() - startTime;
-    // eslint-disable-next-line no-console
-    console.log(`[APP] 🔔 handleNewCheckIn COMPLETE: ${totalDuration.toFixed(2)}ms`);
+    debugLog(`[APP] handleNewCheckIn COMPLETE: ${totalDuration.toFixed(2)}ms`);
   }
 
   /**

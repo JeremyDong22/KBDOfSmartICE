@@ -1,4 +1,4 @@
-// Version: 6.7 - Dynamic thumbnail sizing + smooth preview animations with loading spinner
+// Version: 6.8 - Added setInteractionsEnabled() for locking map when panel is open
 // Map Module - Leaflet.js map initialization and marker management
 // Philosophy: Rely on browser's built-in HTTP cache to minimize API requests
 // Handles: Map initialization, marker creation, marker updates, restaurant navigation, history panel, media preview, night theme
@@ -450,6 +450,30 @@ export class MapModule {
       mapElement.classList.add('blurred');
     } else {
       mapElement.classList.remove('blurred');
+    }
+  }
+
+  /**
+   * Enable or disable map interactions (dragging, zooming, etc.)
+   * Used to lock the map when check-in panel is open
+   */
+  static setInteractionsEnabled(enabled: boolean): void {
+    if (!this.map) return;
+
+    if (enabled) {
+      this.map.dragging.enable();
+      this.map.scrollWheelZoom.enable();
+      this.map.doubleClickZoom.enable();
+      this.map.touchZoom.enable();
+      this.map.boxZoom.enable();
+      this.map.keyboard.enable();
+    } else {
+      this.map.dragging.disable();
+      this.map.scrollWheelZoom.disable();
+      this.map.doubleClickZoom.disable();
+      this.map.touchZoom.disable();
+      this.map.boxZoom.disable();
+      this.map.keyboard.disable();
     }
   }
 

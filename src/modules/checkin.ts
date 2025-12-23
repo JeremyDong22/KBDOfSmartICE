@@ -1,12 +1,19 @@
-// Version: 5.9 - Improved thumbnail timing: spinner stays until reload completes
+// Version: 7.1 - Added verbose logging for video upload debugging
 // Check-in Module - Media recording and submission
-// Handles: Image upload (multiple), voice recording, video recording, check-in submission
+// Handles: Image upload (multiple), voice recording, video upload (file picker), check-in submission
 
 import { KBDService } from '@services/kbd.service';
 import { AuthService } from '@services/auth.service';
-import { TimeControlModule } from '@modules/time-control';
 import { MapModule } from '@modules/map';
 import { UIModule } from '@modules/ui';
+
+// Conditionally import TimeControlModule only in development
+let TimeControlModule: typeof import('@modules/time-control').TimeControlModule | null = null;
+if (import.meta.env.DEV) {
+  import('@modules/time-control').then(m => {
+    TimeControlModule = m.TimeControlModule;
+  });
+}
 
 
 // Compression constants
@@ -125,6 +132,12 @@ export class CheckInModule {
     const imageFileInput = document.getElementById('imageFileInput') as HTMLInputElement;
     if (imageFileInput) {
       imageFileInput.addEventListener('change', (e) => this.handleImageUpload(e));
+    }
+
+    // Video upload handler
+    const videoFileInput = document.getElementById('videoFileInput') as HTMLInputElement;
+    if (videoFileInput) {
+      videoFileInput.addEventListener('change', (e) => this.handleVideoUpload(e));
     }
 
     // Text input handler - element ID is textContent in HTML
@@ -330,105 +343,104 @@ export class CheckInModule {
   }
 
   /**
+   * Handle video file selection (from camera capture or gallery)
+   * Supports native video formats: mp4, mov, quicktime
+   */
+  static async handleVideoUpload(e: Event): Promise<void> {
+    console.log('[Video] handleVideoUpload triggered');
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+
+    if (!file) {
+      console.log('[Video] No file selected');
+      return;
+    }
+
+    console.log('[Video] File selected:', {
+      name: file.name,
+      type: file.type,
+      size: `${(file.size / 1024 / 1024).toFixed(2)} MB`
+    });
+
+    // Validate file type - accept common video formats
+    const validTypes = ['video/mp4', 'video/quicktime', 'video/mov', 'video/mpeg', 'video/3gpp'];
+    if (!validTypes.some(type => file.type.includes(type.split('/')[1]!)) && !file.type.startsWith('video/')) {
+      console.log('[Video] Invalid file type:', file.type);
+      alert('请选择有效的视频文件 (MP4, MOV 等)');
+      return;
+    }
+
+    // Check file size (max 50MB as per constraints)
+    const maxSizeBytes = 50 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      console.log('[Video] File too large:', file.size);
+      alert(`视频文件过大，请选择小于 50MB 的视频`);
+      return;
+    }
+
+    // Store the video file
+    this.currentMediaFiles = [file];
+    console.log('[Video] File stored in currentMediaFiles');
+
+    // Show video preview
+    const videoPreview = document.getElementById('videoPreview') as HTMLVideoElement;
+    const videoPlaceholder = document.getElementById('videoPlaceholder');
+    const submitBtn = document.getElementById('submitVideoBtn') as HTMLButtonElement;
+
+    if (videoPreview) {
+      console.log('[Video] Setting video preview src');
+      videoPreview.src = URL.createObjectURL(file);
+      videoPreview.style.display = 'block';
+      videoPreview.controls = true;
+    }
+    if (videoPlaceholder) {
+      videoPlaceholder.style.display = 'none';
+    }
+
+    // Enable submit button
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      console.log('[Video] Submit button enabled');
+    }
+  }
+
+  /**
+   * Clear selected video and reset UI
+   */
+  static clearVideoSelection(): void {
+    this.currentMediaFiles = [];
+
+    const videoPreview = document.getElementById('videoPreview') as HTMLVideoElement;
+    const videoPlaceholder = document.getElementById('videoPlaceholder');
+    const videoFileInput = document.getElementById('videoFileInput') as HTMLInputElement;
+    const submitBtn = document.getElementById('submitVideoBtn') as HTMLButtonElement;
+
+    if (videoPreview) {
+      videoPreview.src = '';
+      videoPreview.style.display = 'none';
+      videoPreview.controls = false;
+    }
+    if (videoPlaceholder) {
+      videoPlaceholder.style.display = 'block';
+    }
+    if (videoFileInput) {
+      videoFileInput.value = '';
+    }
+    if (submitBtn) {
+      submitBtn.disabled = true;
+    }
+  }
+
+  /**
+   * @deprecated Use handleVideoUpload instead. Kept for backwards compatibility.
    * Toggle video recording with auto-stop at 2MB
    * Monitors size during recording and auto-stops when limit reached
    */
   static async toggleVideoRecording(): Promise<void> {
-
-    if (!this.isVideoRecording) {
-      // Start recording
-      try {
-        // Request lower resolution for smaller file size
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'environment',
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          },
-          audio: true
-        });
-
-        this.videoStream = stream;
-        this.videoChunks = [];
-        this.videoCurrentSize = 0;
-
-        const videoPreview = document.getElementById('videoPreview') as HTMLVideoElement;
-        const videoPlaceholder = document.getElementById('videoPlaceholder');
-
-        if (videoPreview) {
-          videoPreview.srcObject = stream;
-          videoPreview.style.display = 'block';
-          videoPreview.play();
-        }
-        if (videoPlaceholder) {
-          videoPlaceholder.style.display = 'none';
-        }
-
-        // Start MediaRecorder with low bitrate for compression
-        const options: MediaRecorderOptions = {
-          mimeType: 'video/webm;codecs=vp8,opus',
-          videoBitsPerSecond: 400000,  // 400kbps video
-          audioBitsPerSecond: 48000    // 48kbps audio
-        };
-
-        // Fallback if codec not supported
-        try {
-          this.mediaRecorder = new MediaRecorder(stream, options);
-        } catch {
-          this.mediaRecorder = new MediaRecorder(stream);
-        }
-
-        this.mediaRecorder.ondataavailable = (e) => {
-          if (e.data.size > 0) {
-            this.videoChunks.push(e.data);
-            this.videoCurrentSize += e.data.size;
-            const sizeMB = this.videoCurrentSize / (1024 * 1024);
-
-            // Auto-stop when approaching 2MB limit (with 100KB buffer)
-            if (this.videoCurrentSize >= VIDEO_MAX_SIZE_BYTES - 100000) {
-              this.stopVideoRecording();
-            }
-          }
-        };
-
-        this.mediaRecorder.onstop = async () => {
-          const videoBlob = new Blob(this.videoChunks, { type: 'video/webm' });
-          const sizeMB = videoBlob.size / (1024 * 1024);
-
-          const videoFile = new File([videoBlob], `video_${Date.now()}.webm`, { type: 'video/webm' });
-          this.currentMediaFiles = [videoFile];
-
-          // Show video player
-          if (videoPreview) {
-            videoPreview.srcObject = null;
-            videoPreview.src = URL.createObjectURL(videoBlob);
-            videoPreview.controls = true;
-          }
-
-          // Enable submit button
-          const submitBtn = document.getElementById('submitVideoBtn') as HTMLButtonElement;
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.style.display = 'block';
-          }
-
-        };
-
-        // Request data every 500ms for size monitoring
-        this.mediaRecorder.start(500);
-        this.isVideoRecording = true;
-
-        // Update button text
-        const toggleBtn = document.getElementById('toggleVideoBtn') as HTMLButtonElement;
-        if (toggleBtn) {
-          toggleBtn.textContent = '⏹️ 停止录制';
-        }
-
-      } catch (error) {
-        alert('无法访问摄像头，请检查权限设置');
-      }
-    } else {
-      this.stopVideoRecording();
+    // Redirect to file picker for better mobile compatibility
+    const videoFileInput = document.getElementById('videoFileInput') as HTMLInputElement;
+    if (videoFileInput) {
+      videoFileInput.click();
     }
   }
 
@@ -510,34 +522,45 @@ export class CheckInModule {
       MapModule.showAvatarSpinner(currentUser.restaurant_id);
 
       // === BACKGROUND UPLOAD ===
-      // Use dev time if available for cross-day testing
-      const now = TimeControlModule.isDevMode() ? TimeControlModule.getCurrentTime() : new Date();
+      // Use dev time if available for cross-day testing (dev mode only)
+      const now = TimeControlModule?.isDevMode() ? TimeControlModule.getCurrentTime() : new Date();
       const today = now.toISOString().split('T')[0];
       let mediaUrls: string[] = [];
       let textContent: string | null = null;
 
       // Handle different media types
       if (currentTask.media_type === 'image') {
-
+        console.log('[CheckIn] Uploading images:', this.currentMediaFiles.length);
         // Upload all images
         for (const file of this.currentMediaFiles) {
+          console.log('[CheckIn] Uploading image:', file.name, file.type, `${(file.size/1024).toFixed(1)}KB`);
           const url = await KBDService.uploadMedia(
             file,
             currentUser.restaurant_id,
             currentSlotType,
             currentUser.id
           );
+          console.log('[CheckIn] Image uploaded, URL:', url);
           mediaUrls.push(url);
         }
       } else if (currentTask.media_type === 'voice' || currentTask.media_type === 'video') {
         const mediaFile = this.currentMediaFiles[0];
         if (mediaFile) {
+          console.log('[CheckIn] Uploading media file:', {
+            name: mediaFile.name,
+            type: mediaFile.type,
+            size: `${(mediaFile.size / 1024 / 1024).toFixed(2)} MB`
+          });
+          console.log('[CheckIn] Starting KBDService.uploadMedia...');
+          const uploadStart = performance.now();
           const url = await KBDService.uploadMedia(
             mediaFile,
             currentUser.restaurant_id,
             currentSlotType,
             currentUser.id
           );
+          const uploadTime = performance.now() - uploadStart;
+          console.log('[CheckIn] Media uploaded in', uploadTime.toFixed(0), 'ms, URL:', url);
           mediaUrls.push(url);
         }
       } else if (currentTask.media_type === 'text') {
@@ -623,6 +646,9 @@ export class CheckInModule {
     // Reset other UI elements
     const audioPlayer = document.getElementById('audioPlayer') as HTMLAudioElement;
     const videoPreview = document.getElementById('videoPreview') as HTMLVideoElement;
+    const videoPlaceholder = document.getElementById('videoPlaceholder');
+    const videoFileInput = document.getElementById('videoFileInput') as HTMLInputElement;
+    const submitVideoBtn = document.getElementById('submitVideoBtn') as HTMLButtonElement;
     const textContent = document.getElementById('textContent') as HTMLTextAreaElement;
     const submitCheckInBtn = document.getElementById('submitCheckInBtn') as HTMLButtonElement;
 
@@ -633,6 +659,9 @@ export class CheckInModule {
       videoPreview.src = '';
       videoPreview.controls = false;
     }
+    if (videoPlaceholder) videoPlaceholder.style.display = 'block';
+    if (videoFileInput) videoFileInput.value = '';
+    if (submitVideoBtn) submitVideoBtn.disabled = true;
     if (textContent) textContent.value = '';
     if (submitCheckInBtn) {
       submitCheckInBtn.disabled = true;
@@ -649,4 +678,6 @@ if (typeof window !== 'undefined') {
   window.startRecording = (e: Event) => CheckInModule.startRecording(e);
   window.stopRecording = (e: Event) => CheckInModule.stopRecording(e);
   window.toggleVideoRecording = () => CheckInModule.toggleVideoRecording();
+  window.handleVideoUpload = (e: Event) => CheckInModule.handleVideoUpload(e);
+  window.clearVideoSelection = () => CheckInModule.clearVideoSelection();
 }

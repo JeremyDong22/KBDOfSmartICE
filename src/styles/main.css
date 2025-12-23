@@ -19,7 +19,11 @@ body {
     transition: filter 0.3s ease;
 }
 
-#map.blurred {
+/* Map blur effect - only blur tile layer and markers, not controls */
+#map.blurred .leaflet-tile-pane,
+#map.blurred .leaflet-marker-pane,
+#map.blurred .leaflet-shadow-pane,
+#map.blurred .leaflet-overlay-pane {
     filter: blur(2px) contrast(0.8);
 }
 
@@ -125,7 +129,7 @@ body {
     width: 56px;
     height: 56px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.4);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -344,6 +348,17 @@ body {
 /* Hide in production - add .production class to body to hide completely */
 body.production .time-control-panel {
     display: none;
+}
+
+/* Lock UI elements when panel is open (except time control for dev testing) */
+body.panel-open .recenter-btn,
+body.panel-open .leaflet-marker-pane,
+body.panel-open .leaflet-popup-pane {
+    pointer-events: none;
+}
+
+body.panel-open .recenter-btn {
+    opacity: 0.5;
 }
 
 /* Toggle Button (Always visible) - smaller size for dev tool */
@@ -671,6 +686,14 @@ body.production .time-control-panel {
 .preview-zone .placeholder p {
     font-size: 14px;
     font-weight: 500;
+}
+
+.preview-zone .placeholder .hint {
+    display: block;
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 4px;
+    font-weight: 400;
 }
 
 .preview-zone img,

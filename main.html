@@ -141,20 +141,21 @@
                 <button class="checkin-btn primary" id="submitVoiceBtn" style="display: none;" onclick="submitCheckIn()">提交打卡</button>
             </div>
 
-            <!-- video: Video recording -->
+            <!-- video: Video file picker (from camera or gallery) -->
             <div id="videoInput" class="input-section" style="display: none;">
-                <div class="preview-zone">
-                    <video id="videoPreview" style="display: none;"></video>
+                <div class="preview-zone" onclick="document.getElementById('videoFileInput').click()">
+                    <video id="videoPreview" style="display: none;" playsinline></video>
                     <div class="placeholder" id="videoPlaceholder">
                         <svg class="upload-icon" viewBox="0 0 56 56">
                             <circle cx="28" cy="28" r="20" stroke="currentColor" stroke-width="2" fill="none"/>
-                            <circle cx="28" cy="28" r="6" fill="currentColor"/>
+                            <path d="M22 20v16l14-8-14-8z" fill="currentColor"/>
                         </svg>
-                        <p>录制视频</p>
+                        <p>添加视频</p>
+                        <span class="hint">点击拍摄或从相册选择</span>
                     </div>
                 </div>
-                <button class="checkin-btn secondary" id="toggleVideoBtn" onclick="toggleVideoRecording()">🎬 开始录制</button>
-                <button class="checkin-btn primary" id="submitVideoBtn" style="display: none;" onclick="submitCheckIn()">提交打卡</button>
+                <input type="file" id="videoFileInput" accept="video/*" capture="environment" style="display: none;">
+                <button class="checkin-btn primary" id="submitVideoBtn" disabled onclick="submitCheckIn()">提交打卡</button>
             </div>
         </div>
     </div>

@@ -1,4 +1,4 @@
-// Version: 2.0 - Simplified multi-page Vite configuration
+// Version: 2.1 - Disabled source maps for production security
 // Uses standard Vite multi-page setup with root HTML files
 
 import { defineConfig } from 'vite';
@@ -21,7 +21,7 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: false,  // Disabled for production security
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),

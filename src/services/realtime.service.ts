@@ -1,9 +1,16 @@
-// Version: 1.1 - Added detailed performance logging for debugging latency issues
+// Version: 1.2 - Added environment guards for console.logs (production cleanup)
 // Monitors kbd_check_in_record table INSERT events and notifies subscribers
 
 import { supabaseClient } from './supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { CheckInRecord } from '@/types/models';
+
+// Debug logging only in development mode
+const debugLog = (...args: unknown[]) => {
+  if (import.meta.env.DEV) {
+    console.log(...args);
+  }
+};
 
 /**
  * Callback type for new check-in notifications
@@ -24,12 +31,12 @@ export class RealtimeService {
   static async init(): Promise<void> {
     if (this.channel) {
       // eslint-disable-next-line no-console
-      console.log('[RealtimeService] Already initialized, skipping...');
+      debugLog('[RealtimeService] Already initialized, skipping...');
       return;
     }
 
     // eslint-disable-next-line no-console
-    console.log('[RealtimeService] Initializing subscription...');
+    debugLog('[RealtimeService] Initializing subscription...');
 
     this.channel = supabaseClient
       .channel('kbd-check-ins')
@@ -43,7 +50,7 @@ export class RealtimeService {
         const localTime = receiveDate.toLocaleTimeString('zh-CN', { hour12: false }) + '.' + receiveDate.getMilliseconds().toString().padStart(3, '0');
 
         // eslint-disable-next-line no-console
-        console.log(`[RealtimeService] ⏱️ ${localTime} | 📥 RECEIVED`, {
+        debugLog(`[RealtimeService] ⏱️ ${localTime} | 📥 RECEIVED`, {
           eventType: payload.eventType,
           table: payload.table,
           commit_timestamp: payload.commit_timestamp
@@ -56,7 +63,7 @@ export class RealtimeService {
           const serverTime = new Date(payload.commit_timestamp);
           const latencyMs = receiveDate.getTime() - serverTime.getTime();
           // eslint-disable-next-line no-console
-          console.log(`[RealtimeService] ⏱️ ${localTime} | 📊 LATENCY`, {
+          debugLog(`[RealtimeService] ⏱️ ${localTime} | 📊 LATENCY`, {
             server_time: payload.commit_timestamp,
             client_time: receiveDate.toISOString(),
             latency_ms: latencyMs,
@@ -66,7 +73,7 @@ export class RealtimeService {
 
         // Log record details
         // eslint-disable-next-line no-console
-        console.log(`[RealtimeService] ⏱️ ${localTime} | 📋 RECORD`, {
+        debugLog(`[RealtimeService] ⏱️ ${localTime} | 📋 RECORD`, {
           id: newRecord.id,
           restaurant_id: newRecord.restaurant_id,
           employee_id: newRecord.employee_id,
@@ -80,7 +87,7 @@ export class RealtimeService {
           const dbInsertTime = new Date(newRecord.created_at);
           const dbToClientMs = receiveDate.getTime() - dbInsertTime.getTime();
           // eslint-disable-next-line no-console
-          console.log(`[RealtimeService] ⏱️ ${localTime} | 📊 DB->CLIENT`, {
+          debugLog(`[RealtimeService] ⏱️ ${localTime} | 📊 DB->CLIENT`, {
             db_created_at: newRecord.created_at,
             total_latency_ms: dbToClientMs,
             total_latency_display: dbToClientMs > 1000 ? `${(dbToClientMs/1000).toFixed(1)}s` : `${dbToClientMs}ms`
@@ -97,7 +104,7 @@ export class RealtimeService {
             cb(newRecord);
             const cbDuration = performance.now() - cbStart;
             // eslint-disable-next-line no-console
-            console.log(`[RealtimeService] ⏱️ ${localTime} | ✅ CALLBACK #${callbackCount + 1}`, { duration_ms: cbDuration.toFixed(2) });
+            debugLog(`[RealtimeService] ⏱️ ${localTime} | ✅ CALLBACK #${callbackCount + 1}`, { duration_ms: cbDuration.toFixed(2) });
           } catch (err) {
             // eslint-disable-next-line no-console
             console.error('[RealtimeService] Callback execution error:', err);
@@ -109,23 +116,23 @@ export class RealtimeService {
         const totalProcessTime = performance.now() - receiveTime;
 
         // eslint-disable-next-line no-console
-        console.log(`[RealtimeService] ⏱️ ${localTime} | 📊 COMPLETE`, {
+        debugLog(`[RealtimeService] ⏱️ ${localTime} | 📊 COMPLETE`, {
           callbacks_executed: callbackCount,
           callback_total_ms: totalCallbackTime.toFixed(2),
           total_process_ms: totalProcessTime.toFixed(2)
         });
 
         // eslint-disable-next-line no-console
-        console.log('─'.repeat(60));
+        debugLog('─'.repeat(60));
       })
       .subscribe((status) => {
         // eslint-disable-next-line no-console
-        console.log('[RealtimeService] Subscription status:', status);
+        debugLog('[RealtimeService] Subscription status:', status);
         this._isConnected = status === 'SUBSCRIBED';
 
         if (status === 'SUBSCRIBED') {
           // eslint-disable-next-line no-console
-          console.log('[RealtimeService] ✅ Successfully subscribed to real-time updates');
+          debugLog('[RealtimeService] ✅ Successfully subscribed to real-time updates');
         } else if (status === 'CHANNEL_ERROR') {
           // eslint-disable-next-line no-console
           console.error('[RealtimeService] ❌ Channel error occurred');
@@ -134,7 +141,7 @@ export class RealtimeService {
           console.error('[RealtimeService] ❌ Subscription timed out');
         } else if (status === 'CLOSED') {
           // eslint-disable-next-line no-console
-          console.log('[RealtimeService] Channel closed');
+          debugLog('[RealtimeService] Channel closed');
           this._isConnected = false;
         }
       });
@@ -146,12 +153,12 @@ export class RealtimeService {
   static onNewCheckIn(callback: CheckInCallback): () => void {
     this.callbacks.add(callback);
     // eslint-disable-next-line no-console
-    console.log('[RealtimeService] Callback registered, total callbacks:', this.callbacks.size);
+    debugLog('[RealtimeService] Callback registered, total callbacks:', this.callbacks.size);
 
     return () => {
       this.callbacks.delete(callback);
       // eslint-disable-next-line no-console
-      console.log('[RealtimeService] Callback removed, remaining callbacks:', this.callbacks.size);
+      debugLog('[RealtimeService] Callback removed, remaining callbacks:', this.callbacks.size);
     };
   }
 
@@ -161,13 +168,13 @@ export class RealtimeService {
   static stop(): void {
     if (this.channel) {
       // eslint-disable-next-line no-console
-      console.log('[RealtimeService] Stopping subscription...');
+      debugLog('[RealtimeService] Stopping subscription...');
       supabaseClient.removeChannel(this.channel);
       this.channel = null;
       this._isConnected = false;
       this.callbacks.clear();
       // eslint-disable-next-line no-console
-      console.log('[RealtimeService] Subscription stopped and cleaned up');
+      debugLog('[RealtimeService] Subscription stopped and cleaned up');
     }
   }
 

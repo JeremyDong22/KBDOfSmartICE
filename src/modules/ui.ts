@@ -1,8 +1,9 @@
-// Version: 5.3 - Fixed duplicate dot in status bar (removed ● from status strings)
+// Version: 5.4 - Added map/UI locking when check-in panel is open
 // UI Module - UI state management and animations
 // Handles: Panel visibility, status bar with business states, animations, restaurant navigation
 
 import { AuthService } from '@services/auth.service';
+import { MapModule } from '@modules/map';
 import type { Restaurant, Task, SlotType, MediaType } from '@/types/models';
 
 
@@ -170,12 +171,17 @@ export class UIModule {
 
   /**
    * Show check-in panel with animation
+   * Also locks map interactions and other UI elements
    */
   static showCheckInPanel(): void {
 
     const panel = document.getElementById('checkinPanel') as HTMLElement;
     if (panel) {
       panel.style.display = 'block';
+
+      // Lock map interactions when panel is shown
+      MapModule.setInteractionsEnabled(false);
+      document.body.classList.add('panel-open');
 
       setTimeout(() => {
         panel.classList.add('visible');
@@ -185,12 +191,17 @@ export class UIModule {
 
   /**
    * Hide check-in panel with animation
+   * Also unlocks map interactions and other UI elements
    */
   static hideCheckInPanel(): void {
 
     const panel = document.getElementById('checkinPanel') as HTMLElement;
     if (panel) {
       panel.classList.remove('visible');
+
+      // Unlock map interactions when panel is hidden
+      MapModule.setInteractionsEnabled(true);
+      document.body.classList.remove('panel-open');
 
       setTimeout(() => {
         panel.style.display = 'none';

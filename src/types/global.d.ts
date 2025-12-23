@@ -1,4 +1,4 @@
-// Version: 1.4 - Added CacheService and AvatarCacheService to global window interface
+// Version: 1.6 - Added handleVideoUpload and clearVideoSelection functions
 // Defines global window interfaces and Vite environment variables
 
 import type { AuthService } from '@services/auth.service';
@@ -40,12 +40,17 @@ declare global {
     startRecording: (event: Event) => Promise<void>;
     stopRecording: (event: Event) => void;
     toggleVideoRecording: () => Promise<void>;
+    handleVideoUpload: (event: Event) => Promise<void>;
+    clearVideoSelection: () => void;
     handleTimeJump: (slot: SlotType | null) => Promise<void>;
   }
 
   interface ImportMetaEnv {
     readonly VITE_SUPABASE_URL: string;
     readonly VITE_SUPABASE_ANON_KEY: string;
+    readonly DEV: boolean;
+    readonly PROD: boolean;
+    readonly MODE: string;
   }
 
   interface ImportMeta {
